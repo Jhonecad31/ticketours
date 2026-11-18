@@ -1,0 +1,35 @@
+name: ticketours
+
+services:
+  postgres:
+    image: postgres:17.12-alpine3.23
+    environment:
+      POSTGRES_DB: ticketours
+      POSTGRES_USER: ticketours
+      POSTGRES_PASSWORD: ticketours_local
+    ports:
+      - "127.0.0.1:${TICKETOURS_POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "ticketours", "-d", "ticketours"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  redis:
+    image: redis:7.4.12-alpine3.22
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:${TICKETOURS_REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+volumes:
+  postgres_data:
+  redis_data:

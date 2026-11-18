@@ -1,0 +1,476 @@
+openapi: "3.0.3"
+info: {"title":"Ticketours API","version":"0.2.0","description":"Identidad, organizaciones, membresías, invitaciones y auditoría corresponden a Fase 1. Los contratos de catálogo y reservas se habilitan según el roadmap. Las mutaciones de Fase 1 requieren X-CSRF-TOKEN obtenido en /auth/csrf. El servidor valida los permisos por organización."}
+servers: [{"url":"/api/v1"}]
+security: [{"sessionCookie":[]}]
+x-correlation-headers: &correlationHeaders {"X-Correlation-ID":{"description":"Identificador de correlación asignado por el servidor","schema":{"type":"string"}}}
+x-error-400: &error400 {"$ref":"#/components/responses/Error400"}
+x-error-401: &error401 {"$ref":"#/components/responses/Error401"}
+x-error-403: &error403 {"$ref":"#/components/responses/Error403"}
+x-error-404: &error404 {"$ref":"#/components/responses/Error404"}
+x-error-409: &error409 {"$ref":"#/components/responses/Error409"}
+x-error-422: &error422 {"$ref":"#/components/responses/Error422"}
+x-error-429: &error429 {"$ref":"#/components/responses/Error429"}
+x-error-500: &error500 {"$ref":"#/components/responses/Error500"}
+x-error-419: &error419 {"$ref":"#/components/responses/Error419"}
+paths:
+  /auth/csrf:
+    get:
+      operationId: "getCsrfToken"
+      summary: "Inicializar o consultar el token CSRF de la sesión"
+      security: []
+      responses:
+        "200": {"description":"Token de sesión", "headers":{"Set-Cookie":{"description":"Cookie ticketours_session HttpOnly. Secure en HTTPS.","schema":{"type":"string"}},"X-Correlation-ID":{"schema":{"type":"string"}}},"content":{"application/json":{"schema":{"$ref":"#/components/schemas/CsrfToken"}}}}
+        "500": *error500
+  /organizations/{org}/invitations:
+    parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]
+    post:
+      operationId: "createInvitation"
+      summary: "Emitir una invitación individual de un solo uso"
+      x-permission: "memberships.invite"
+      parameters: [{"$ref":"#/components/parameters/CsrfToken"}]
+      requestBody: {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/InvitationInput"}}}}
+      responses:
+        "201": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Invitation"}}}}
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "409": *error409
+        "419": *error419
+        "422": *error422
+        "429": *error429
+        "500": *error500
+  /invitations/accept:
+    post:
+      operationId: "acceptInvitation"
+      summary: "Aceptar invitación"
+      description: "Las cuentas existentes deben iniciar sesión con el correo invitado. Para un correo nuevo, incluye nombre y contraseña. El código dura 48 horas."
+      security: [{}, {"sessionCookie":[]}]
+      parameters: [{"$ref":"#/components/parameters/CsrfToken"}]
+      requestBody: {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/InvitationAcceptance"}}}}
+      responses:
+        "201": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Membership"}}}}
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "409": *error409
+        "419": *error419
+        "422": *error422
+        "429": *error429
+        "500": *error500
+  /auth/login:
+    post:
+      operationId: "login"
+      parameters: [{"$ref":"#/components/parameters/CsrfToken"}]
+      summary: "Iniciar sesión"
+      security: []
+      requestBody: {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Login"}}}}
+      responses:
+        "200": {"description":"Operación completada","headers":{"X-Correlation-ID":{"description":"Identificador de correlación asignado por el servidor","schema":{"type":"string"}},"Set-Cookie":{"description":"Cookie de sesión ticketours_session HttpOnly. Secure con HTTPS.","schema":{"type":"string"}}},"content":{"application/json":{"schema":{"$ref":"#/components/schemas/User"}}}}
+        "400": *error400
+        "401": *error401
+        "422": *error422
+        "419": *error419
+        "429": *error429
+        "500": *error500
+  /auth/logout:
+    post:
+      operationId: "logout"
+      parameters: [{"$ref":"#/components/parameters/CsrfToken"}]
+      summary: "Revocar la sesión actual"
+      responses:
+        "204": {"description":"Operación completada","headers":*correlationHeaders}
+        "400": *error400
+        "401": *error401
+        "419": *error419
+        "429": *error429
+        "500": *error500
+  /auth/me:
+    get:
+      operationId: "getIdentity"
+      summary: "Consultar identidad"
+      responses:
+        "200": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/User"}}}}
+        "400": *error400
+        "401": *error401
+        "429": *error429
+        "500": *error500
+  /organizations:
+    get:
+      operationId: "listOrganizations"
+      summary: "Listar organizaciones accesibles"
+      parameters: [{"name":"cursor","in":"query","required":false,"schema":{"type":"string"},"description":"Cursor opaco de la página anterior"},{"name":"limit","in":"query","required":false,"schema":{"type":"integer","minimum":1,"maximum":100,"default":25}}]
+      responses:
+        "200": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"type":"object","required":["items","next_cursor"],"properties":{"items":{"type":"array","items":{"$ref":"#/components/schemas/Organization"}},"next_cursor":{"type":"string","nullable":true}}}}}}
+        "400": *error400
+        "401": *error401
+        "422": *error422
+        "429": *error429
+        "500": *error500
+    post:
+      operationId: "createOrganization"
+      parameters: [{"$ref":"#/components/parameters/CsrfToken"}]
+      summary: "Registrar organización"
+      x-permission: "organizations.create"
+      requestBody: {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/OrganizationInput"}}}}
+      responses:
+        "201": {"description":"Recurso creado","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Organization"}}}}
+        "400": *error400
+        "401": *error401
+        "403": *error403
+        "409": *error409
+        "422": *error422
+        "419": *error419
+        "429": *error429
+        "500": *error500
+  /organizations/{org}/memberships:
+    parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","minLength":1,"maxLength":128}}]
+    get:
+      operationId: "listMemberships"
+      summary: "Listar membresías"
+      x-permission: "memberships.read"
+      parameters: [{"name":"cursor","in":"query","required":false,"schema":{"type":"string"},"description":"Cursor opaco de la página anterior"},{"name":"limit","in":"query","required":false,"schema":{"type":"integer","minimum":1,"maximum":100,"default":25}}]
+      responses:
+        "200": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"type":"object","required":["items","next_cursor"],"properties":{"items":{"type":"array","items":{"$ref":"#/components/schemas/Membership"}},"next_cursor":{"type":"string","nullable":true}}}}}}
+        "400": *error400
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "422": *error422
+        "429": *error429
+        "500": *error500
+  /organizations/{org}/products:
+    parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","minLength":1,"maxLength":128}}]
+    get:
+      operationId: "listProducts"
+      summary: "Listar productos"
+      x-permission: "catalog.read"
+      parameters: [{"name":"cursor","in":"query","required":false,"schema":{"type":"string"},"description":"Cursor opaco de la página anterior"},{"name":"limit","in":"query","required":false,"schema":{"type":"integer","minimum":1,"maximum":100,"default":25}},{"name":"status","in":"query","required":false,"schema":{"type":"string","enum":["draft","review","published","suspended","archived"]}}]
+      responses:
+        "200": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"type":"object","required":["items","next_cursor"],"properties":{"items":{"type":"array","items":{"$ref":"#/components/schemas/Product"}},"next_cursor":{"type":"string","nullable":true}}}}}}
+        "400": *error400
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "422": *error422
+        "429": *error429
+        "500": *error500
+    post:
+      operationId: "createProduct"
+      summary: "Crear producto en borrador"
+      x-permission: "catalog.write"
+      requestBody: {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/ProductInput"}}}}
+      responses:
+        "201": {"description":"Recurso creado","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Product"}}}}
+        "400": *error400
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "422": *error422
+        "429": *error429
+        "500": *error500
+  /organizations/{org}/product-variants:
+    parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","minLength":1,"maxLength":128}}]
+    get:
+      operationId: "listVariants"
+      summary: "Listar variantes"
+      x-permission: "catalog.read"
+      parameters: [{"name":"cursor","in":"query","required":false,"schema":{"type":"string"},"description":"Cursor opaco de la página anterior"},{"name":"limit","in":"query","required":false,"schema":{"type":"integer","minimum":1,"maximum":100,"default":25}},{"name":"product_id","in":"query","required":false,"schema":{"type":"string","minLength":1,"maxLength":128}}]
+      responses:
+        "200": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"type":"object","required":["items","next_cursor"],"properties":{"items":{"type":"array","items":{"$ref":"#/components/schemas/Variant"}},"next_cursor":{"type":"string","nullable":true}}}}}}
+        "400": *error400
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "422": *error422
+        "429": *error429
+        "500": *error500
+  /organizations/{org}/sessions:
+    parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","minLength":1,"maxLength":128}}]
+    get:
+      operationId: "listSessions"
+      summary: "Listar sesiones"
+      x-permission: "inventory.read"
+      parameters: [{"name":"cursor","in":"query","required":false,"schema":{"type":"string"},"description":"Cursor opaco de la página anterior"},{"name":"limit","in":"query","required":false,"schema":{"type":"integer","minimum":1,"maximum":100,"default":25}},{"name":"variant_id","in":"query","required":false,"schema":{"type":"string","minLength":1,"maxLength":128}},{"name":"from","in":"query","required":false,"schema":{"type":"string","format":"date-time","description":"Fecha RFC 3339 con desplazamiento explícito. Las respuestas usan UTC."}},{"name":"to","in":"query","required":false,"schema":{"type":"string","format":"date-time","description":"Fecha RFC 3339 con desplazamiento explícito. Las respuestas usan UTC."}}]
+      responses:
+        "200": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"type":"object","required":["items","next_cursor"],"properties":{"items":{"type":"array","items":{"$ref":"#/components/schemas/Session"}},"next_cursor":{"type":"string","nullable":true}}}}}}
+        "400": *error400
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "422": *error422
+        "429": *error429
+        "500": *error500
+  /organizations/{org}/resources:
+    parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","minLength":1,"maxLength":128}}]
+    get:
+      operationId: "listResources"
+      summary: "Listar recursos"
+      x-permission: "inventory.read"
+      parameters: [{"name":"cursor","in":"query","required":false,"schema":{"type":"string"},"description":"Cursor opaco de la página anterior"},{"name":"limit","in":"query","required":false,"schema":{"type":"integer","minimum":1,"maximum":100,"default":25}}]
+      responses:
+        "200": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"type":"object","required":["items","next_cursor"],"properties":{"items":{"type":"array","items":{"$ref":"#/components/schemas/Resource"}},"next_cursor":{"type":"string","nullable":true}}}}}}
+        "400": *error400
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "422": *error422
+        "429": *error429
+        "500": *error500
+  /organizations/{org}/customers:
+    parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","minLength":1,"maxLength":128}}]
+    get:
+      operationId: "listCustomers"
+      summary: "Listar clientes"
+      x-permission: "customers.read"
+      parameters: [{"name":"cursor","in":"query","required":false,"schema":{"type":"string"},"description":"Cursor opaco de la página anterior"},{"name":"limit","in":"query","required":false,"schema":{"type":"integer","minimum":1,"maximum":100,"default":25}}]
+      responses:
+        "200": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"type":"object","required":["items","next_cursor"],"properties":{"items":{"type":"array","items":{"$ref":"#/components/schemas/Customer"}},"next_cursor":{"type":"string","nullable":true}}}}}}
+        "400": *error400
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "422": *error422
+        "429": *error429
+        "500": *error500
+    post:
+      operationId: "createCustomer"
+      summary: "Registrar cliente"
+      x-permission: "customers.write"
+      requestBody: {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/CustomerInput"}}}}
+      responses:
+        "201": {"description":"Recurso creado","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Customer"}}}}
+        "400": *error400
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "422": *error422
+        "429": *error429
+        "500": *error500
+  /organizations/{org}/audit-events:
+    parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","minLength":1,"maxLength":128}}]
+    get:
+      operationId: "listAuditEvents"
+      summary: "Listar eventos de auditoría"
+      x-permission: "audit.read"
+      parameters: [{"name":"cursor","in":"query","required":false,"schema":{"type":"string"},"description":"Cursor opaco de la página anterior"},{"name":"limit","in":"query","required":false,"schema":{"type":"integer","minimum":1,"maximum":100,"default":25}},{"name":"actor_id","in":"query","required":false,"schema":{"type":"string","minLength":1,"maxLength":128}},{"name":"action","in":"query","required":false,"schema":{"type":"string"}},{"name":"from","in":"query","required":false,"schema":{"type":"string","format":"date-time","description":"Fecha RFC 3339 con desplazamiento explícito. Las respuestas usan UTC."}},{"name":"to","in":"query","required":false,"schema":{"type":"string","format":"date-time","description":"Fecha RFC 3339 con desplazamiento explícito. Las respuestas usan UTC."}}]
+      responses:
+        "200": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"type":"object","required":["items","next_cursor"],"properties":{"items":{"type":"array","items":{"$ref":"#/components/schemas/AuditEvent"}},"next_cursor":{"type":"string","nullable":true}}}}}}
+        "400": *error400
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "422": *error422
+        "429": *error429
+        "500": *error500
+  /organizations/{org}/products/{id}:
+    parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","minLength":1,"maxLength":128}},{"name":"id","in":"path","required":true,"schema":{"type":"string","minLength":1,"maxLength":128}}]
+    get:
+      operationId: "getProduct"
+      summary: "Consultar producto"
+      x-permission: "catalog.read"
+      responses:
+        "200": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Product"}}}}
+        "400": *error400
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "429": *error429
+        "500": *error500
+    patch:
+      operationId: "updateProduct"
+      summary: "Editar nombre del producto"
+      x-permission: "catalog.write"
+      requestBody: {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/ProductInput"}}}}
+      responses:
+        "200": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Product"}}}}
+        "400": *error400
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "409": *error409
+        "422": *error422
+        "429": *error429
+        "500": *error500
+  /organizations/{org}/availability:
+    parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","minLength":1,"maxLength":128}}]
+    get:
+      operationId: "getAvailability"
+      summary: "Consultar disponibilidad observada"
+      x-permission: "inventory.read"
+      parameters: [{"name":"variant_id","in":"query","required":true,"schema":{"type":"string","minLength":1,"maxLength":128}},{"name":"from","in":"query","required":true,"schema":{"type":"string","format":"date-time","description":"Fecha RFC 3339 con desplazamiento explícito. Las respuestas usan UTC."}},{"name":"to","in":"query","required":true,"schema":{"type":"string","format":"date-time","description":"Fecha RFC 3339 con desplazamiento explícito. Las respuestas usan UTC."}},{"name":"resource_id","in":"query","required":false,"schema":{"type":"string","minLength":1,"maxLength":128},"description":"Filtro para modalidad de recurso exclusivo"}]
+      responses:
+        "200": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Availability"},"example":{"variant_id":"variant_01","time_zone":"America/Cancun","items":[{"session_id":"session_01","start_at":"2027-01-12T15:00:00Z","end_at":"2027-01-12T16:00:00Z","available_quantity":2}]}}}}
+        "400": *error400
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "422": *error422
+        "429": *error429
+        "500": *error500
+  /organizations/{org}/quotes:
+    parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","minLength":1,"maxLength":128}}]
+    post:
+      operationId: "createQuote"
+      summary: "Cotizar una selección"
+      description: "La cotización informa el precio y su vigencia. El cupo se asegura al crear la retención."
+      x-permission: "reservations.quote"
+      requestBody: {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/QuoteInput"},"example":{"variant_id":"variant_01","selection":{"session_id":"session_01","quantity":2}}}}}
+      responses:
+        "201": {"description":"Recurso creado","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Quote"}}}}
+        "400": *error400
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "409": *error409
+        "422": *error422
+        "429": *error429
+        "500": *error500
+  /organizations/{org}/holds:
+    parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","minLength":1,"maxLength":128}}]
+    post:
+      operationId: "createHold"
+      summary: "Retener inventario"
+      description: "La selección debe coincidir con la cotización vigente. La disponibilidad se comprueba en la transacción."
+      x-permission: "reservations.hold"
+      parameters: [{"$ref":"#/components/parameters/IdempotencyKey"}]
+      requestBody: {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/HoldInput"},"example":{"quote_id":"quote_01","selection":{"session_id":"session_01","quantity":2}}}}}
+      responses:
+        "201": {"description":"Recurso creado","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Hold"}}}}
+        "400": *error400
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "409": *error409
+        "422": *error422
+        "429": *error429
+        "500": *error500
+  /organizations/{org}/holds/{id}/release:
+    parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","minLength":1,"maxLength":128}},{"name":"id","in":"path","required":true,"schema":{"type":"string","minLength":1,"maxLength":128}}]
+    post:
+      operationId: "releaseHold"
+      summary: "Liberar una retención"
+      description: "Devuelve el estado actual si ya fue liberada o venció. Una retención comprometida exige gestionar la reserva. Si la retención tiene una reserva en curso, se deben aplicar las reglas de cancelación de la reserva."
+      x-permission: "reservations.hold"
+      parameters: [{"$ref":"#/components/parameters/IdempotencyKey"}]
+      responses:
+        "200": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Hold"}}}}
+        "400": *error400
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "409": *error409
+        "429": *error429
+        "500": *error500
+  /organizations/{org}/reservations:
+    parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","minLength":1,"maxLength":128}}]
+    post:
+      operationId: "createReservation"
+      summary: "Crear reserva retenida"
+      x-permission: "reservations.create"
+      parameters: [{"$ref":"#/components/parameters/IdempotencyKey"}]
+      requestBody: {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/ReservationInput"},"example":{"hold_id":"hold_01","customer_id":"customer_01","participants":[{"name":"Cliente de prueba"}]}}}}
+      responses:
+        "201": {"description":"Recurso creado","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Reservation"}}}}
+        "400": *error400
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "409": *error409
+        "422": *error422
+        "429": *error429
+        "500": *error500
+  /organizations/{org}/reservations/{id}:
+    parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","minLength":1,"maxLength":128}},{"name":"id","in":"path","required":true,"schema":{"type":"string","minLength":1,"maxLength":128}}]
+    get:
+      operationId: "getReservation"
+      summary: "Consultar reserva"
+      x-permission: "reservations.read"
+      responses:
+        "200": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Reservation"}}}}
+        "400": *error400
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "429": *error429
+        "500": *error500
+  /organizations/{org}/reservations/{id}/confirm:
+    parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","minLength":1,"maxLength":128}},{"name":"id","in":"path","required":true,"schema":{"type":"string","minLength":1,"maxLength":128}}]
+    post:
+      operationId: "confirmReservation"
+      summary: "Confirmar y comprometer inventario"
+      description: "Requiere retención vigente y precondiciones de política. La activación del flujo está sujeta a D05."
+      x-permission: "reservations.confirm"
+      parameters: [{"$ref":"#/components/parameters/IdempotencyKey"}]
+      responses:
+        "200": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Reservation"}}}}
+        "400": *error400
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "409": *error409
+        "429": *error429
+        "500": *error500
+  /organizations/{org}/reservations/{id}/cancel:
+    parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","minLength":1,"maxLength":128}},{"name":"id","in":"path","required":true,"schema":{"type":"string","minLength":1,"maxLength":128}}]
+    post:
+      operationId: "cancelReservation"
+      summary: "Solicitar o aplicar cancelación"
+      description: "Devuelve estado cancelado o pendiente de cancelación según política."
+      x-permission: "reservations.cancel"
+      parameters: [{"$ref":"#/components/parameters/IdempotencyKey"}]
+      requestBody: {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Cancellation"},"example":{"reason":"Solicitud del cliente"}}}}
+      responses:
+        "200": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Reservation"}}}}
+        "400": *error400
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "409": *error409
+        "422": *error422
+        "429": *error429
+        "500": *error500
+components:
+  securitySchemes:
+    sessionCookie: {"type":"apiKey","in":"cookie","name":"ticketours_session"}
+  parameters:
+    CsrfToken: {"name":"X-CSRF-TOKEN","in":"header","required":true,"description":"Token devuelto por GET /auth/csrf. Renueva el token después del inicio o cierre de sesión.","schema":{"type":"string"}}
+    IdempotencyKey: {"name":"Idempotency-Key","in":"header","required":true,"schema":{"type":"string","minLength":1,"maxLength":128},"description":"Repite el resultado de la misma operación. La misma clave con otra solicitud devuelve 409 IDEMPOTENCY_KEY_REUSED."}
+  schemas:
+    Error: {"type":"object","required":["code","message","details","correlation_id"],"properties":{"code":{"type":"string"},"message":{"type":"string"},"details":{"type":"object","additionalProperties":true},"correlation_id":{"type":"string"}}}
+    Organization: {"type":"object","required":["id","name","time_zone"],"properties":{"id":{"type":"string","minLength":1,"maxLength":128},"name":{"type":"string","minLength":1,"maxLength":200},"time_zone":{"type":"string","example":"America/Cancun","description":"Identificador de zona IANA"}}}
+    OrganizationInput: {"type":"object","required":["name","time_zone"],"properties":{"name":{"type":"string","minLength":1,"maxLength":200},"time_zone":{"type":"string","example":"America/Cancun","description":"Identificador de zona IANA"}}}
+    User: {"type":"object","required":["id","name","email","can_create_organizations"],"properties":{"id":{"type":"string"},"name":{"type":"string","maxLength":200},"email":{"type":"string","format":"email"},"can_create_organizations":{"type":"boolean"}}}
+    Login: {"type":"object","required":["email","password"],"properties":{"email":{"type":"string","format":"email"},"password":{"type":"string","format":"password","minLength":1}}}
+    Membership: {"type":"object","required":["id","user_id","active","roles"],"properties":{"id":{"type":"string","format":"uuid"},"user_id":{"type":"string"},"active":{"type":"boolean"},"roles":{"type":"array","items":{"type":"string","enum":["owner","admin","booking_agent"]}}}}
+    CsrfToken: {"type":"object","required":["token"],"properties":{"token":{"type":"string"}}}
+    InvitationInput: {"type":"object","required":["email","role"],"properties":{"email":{"type":"string","format":"email","maxLength":254},"role":{"type":"string","enum":["admin","booking_agent"]}}}
+    Invitation: {"type":"object","required":["id","token","expires_at"],"properties":{"id":{"type":"string","format":"uuid"},"token":{"type":"string","pattern":"^[a-f0-9]{64}$","description":"Código confidencial entregado una sola vez."},"expires_at":{"type":"string","format":"date-time"}}}
+    InvitationAcceptance: {"type":"object","required":["token"],"properties":{"token":{"type":"string","pattern":"^[a-f0-9]{64}$"},"name":{"type":"string","minLength":1,"maxLength":200},"password":{"type":"string","format":"password","minLength":12,"maxLength":72,"description":"Máximo de 72 bytes UTF-8."}}}
+    Product: {"type":"object","required":["id","name","status"],"properties":{"id":{"type":"string","minLength":1,"maxLength":128},"name":{"type":"string","minLength":1,"maxLength":200},"status":{"type":"string","enum":["draft","review","published","suspended","archived"]}}}
+    ProductInput: {"type":"object","required":["name"],"properties":{"name":{"type":"string","minLength":1,"maxLength":200}}}
+    Variant: {"type":"object","required":["id","product_id","name","modality"],"properties":{"id":{"type":"string","minLength":1,"maxLength":128},"product_id":{"type":"string","minLength":1,"maxLength":128},"name":{"type":"string","minLength":1,"maxLength":200},"modality":{"type":"string","enum":["session","exclusive_resource"]}}}
+    Session: {"type":"object","required":["id","variant_id","start_at","end_at"],"properties":{"id":{"type":"string","minLength":1,"maxLength":128},"variant_id":{"type":"string","minLength":1,"maxLength":128},"start_at":{"type":"string","format":"date-time","description":"Fecha RFC 3339 con desplazamiento explícito. Las respuestas usan UTC."},"end_at":{"type":"string","format":"date-time","description":"Fecha RFC 3339 con desplazamiento explícito. Las respuestas usan UTC."}}}
+    Resource: {"type":"object","required":["id","name"],"properties":{"id":{"type":"string","minLength":1,"maxLength":128},"name":{"type":"string","minLength":1,"maxLength":200}}}
+    Selection: {"oneOf":[{"type":"object","required":["session_id","quantity"],"properties":{"session_id":{"type":"string","minLength":1,"maxLength":128},"quantity":{"type":"integer","minimum":1}},"additionalProperties":false},{"type":"object","required":["resource_id","start_at","end_at"],"properties":{"resource_id":{"type":"string","minLength":1,"maxLength":128},"start_at":{"type":"string","format":"date-time","description":"Fecha RFC 3339 con desplazamiento explícito. Las respuestas usan UTC."},"end_at":{"type":"string","format":"date-time","description":"Fecha RFC 3339 con desplazamiento explícito. Las respuestas usan UTC."}},"additionalProperties":false}]}
+    Availability: {"type":"object","required":["variant_id","time_zone","items"],"properties":{"variant_id":{"type":"string","minLength":1,"maxLength":128},"time_zone":{"type":"string","example":"America/Cancun","description":"Identificador de zona IANA"},"items":{"type":"array","items":{"oneOf":[{"type":"object","required":["session_id","start_at","end_at","available_quantity"],"properties":{"session_id":{"type":"string","minLength":1,"maxLength":128},"start_at":{"type":"string","format":"date-time","description":"Fecha RFC 3339 con desplazamiento explícito. Las respuestas usan UTC."},"end_at":{"type":"string","format":"date-time","description":"Fecha RFC 3339 con desplazamiento explícito. Las respuestas usan UTC."},"available_quantity":{"type":"integer","minimum":0}},"additionalProperties":false},{"type":"object","required":["resource_id","start_at","end_at"],"properties":{"resource_id":{"type":"string","minLength":1,"maxLength":128},"start_at":{"type":"string","format":"date-time","description":"Fecha RFC 3339 con desplazamiento explícito. Las respuestas usan UTC."},"end_at":{"type":"string","format":"date-time","description":"Fecha RFC 3339 con desplazamiento explícito. Las respuestas usan UTC."}},"additionalProperties":false}]}}}}
+    QuoteInput: {"type":"object","required":["variant_id","selection"],"properties":{"variant_id":{"type":"string","minLength":1,"maxLength":128},"selection":{"$ref":"#/components/schemas/Selection"}}}
+    Quote: {"type":"object","required":["id","variant_id","selection","total","currency","rate_version_id","policy_version_id","expires_at"],"properties":{"id":{"type":"string","minLength":1,"maxLength":128},"variant_id":{"type":"string","minLength":1,"maxLength":128},"selection":{"$ref":"#/components/schemas/Selection"},"total":{"type":"string","pattern":"^[0-9]+(\\.[0-9]+)?$","example":"250.00"},"currency":{"type":"string","pattern":"^[A-Z]{3}$","example":"MXN"},"rate_version_id":{"type":"string","minLength":1,"maxLength":128},"policy_version_id":{"type":"string","minLength":1,"maxLength":128},"expires_at":{"type":"string","format":"date-time","description":"Fecha RFC 3339 con desplazamiento explícito. Las respuestas usan UTC."}}}
+    HoldInput: {"type":"object","required":["quote_id","selection"],"properties":{"quote_id":{"type":"string","minLength":1,"maxLength":128},"selection":{"$ref":"#/components/schemas/Selection"}}}
+    Hold: {"type":"object","required":["id","quote_id","selection","status","expires_at"],"properties":{"id":{"type":"string","minLength":1,"maxLength":128},"quote_id":{"type":"string","minLength":1,"maxLength":128},"selection":{"$ref":"#/components/schemas/Selection"},"status":{"type":"string","enum":["active","released","expired","committed"]},"expires_at":{"type":"string","format":"date-time","description":"Fecha RFC 3339 con desplazamiento explícito. Las respuestas usan UTC."}}}
+    ReservationInput: {"type":"object","required":["hold_id","customer_id"],"properties":{"hold_id":{"type":"string","minLength":1,"maxLength":128},"customer_id":{"type":"string","minLength":1,"maxLength":128},"participants":{"type":"array","items":{"type":"object","required":["name"],"properties":{"name":{"type":"string","minLength":1,"maxLength":200}}}}}}
+    Reservation: {"type":"object","required":["id","hold_id","customer_id","status","items"],"properties":{"id":{"type":"string","minLength":1,"maxLength":128},"hold_id":{"type":"string","minLength":1,"maxLength":128},"customer_id":{"type":"string","minLength":1,"maxLength":128},"status":{"type":"string","enum":["draft","held","pending_confirmation","confirmed","pending_modification","pending_cancellation","cancelled","expired","rejected"]},"items":{"type":"array","items":{"$ref":"#/components/schemas/ReservationItem"}}}}
+    ReservationItem: {"type":"object","required":["id","variant_id","selection","total","currency","rate_version_id","policy_version_id"],"properties":{"id":{"type":"string","minLength":1,"maxLength":128},"variant_id":{"type":"string","minLength":1,"maxLength":128},"selection":{"$ref":"#/components/schemas/Selection"},"total":{"type":"string","pattern":"^[0-9]+(\\.[0-9]+)?$","example":"250.00"},"currency":{"type":"string","pattern":"^[A-Z]{3}$","example":"MXN"},"rate_version_id":{"type":"string","minLength":1,"maxLength":128},"policy_version_id":{"type":"string","minLength":1,"maxLength":128}}}
+    Cancellation: {"type":"object","required":["reason"],"properties":{"reason":{"type":"string","minLength":1,"maxLength":500}}}
+    CustomerInput: {"type":"object","required":["name"],"properties":{"name":{"type":"string","minLength":1,"maxLength":200},"email":{"type":"string","format":"email"}}}
+    Customer: {"type":"object","required":["id","name"],"properties":{"id":{"type":"string","minLength":1,"maxLength":128},"name":{"type":"string","minLength":1,"maxLength":200},"email":{"type":"string","format":"email"}}}
+    AuditEvent: {"type":"object","required":["id","action","entity_type","entity_id","occurred_at","correlation_id"],"properties":{"id":{"type":"string","minLength":1,"maxLength":128},"actor_id":{"type":"string","minLength":1,"maxLength":128},"action":{"type":"string"},"entity_type":{"type":"string"},"entity_id":{"type":"string","minLength":1,"maxLength":128},"occurred_at":{"type":"string","format":"date-time","description":"Fecha RFC 3339 con desplazamiento explícito. Las respuestas usan UTC."},"correlation_id":{"type":"string"}}}
+  responses:
+    Error400: {"description":"Solicitud inválida","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"},"example":{"code":"INVALID_REQUEST","message":"Solicitud inválida","details":{},"correlation_id":"request_01"}}}}
+    Error401: {"description":"Autenticación requerida o credenciales inválidas","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"},"example":{"code":"UNAUTHENTICATED","message":"Autenticación requerida o credenciales inválidas","details":{},"correlation_id":"request_01"}}}}
+    Error403: {"description":"Operación fuera del ámbito autorizado","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"},"example":{"code":"FORBIDDEN","message":"Operación fuera del ámbito autorizado","details":{},"correlation_id":"request_01"}}}}
+    Error404: {"description":"Recurso no visible en el ámbito solicitado","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"},"example":{"code":"NOT_FOUND","message":"Recurso no visible en el ámbito solicitado","details":{},"correlation_id":"request_01"}}}}
+    Error409: {"description":"Conflicto de inventario, vigencia, estado o idempotencia","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"},"examples":{"INVENTORY_UNAVAILABLE":{"value":{"code":"INVENTORY_UNAVAILABLE","message":"La operación no se puede aplicar en el estado actual.","details":{},"correlation_id":"request_01"}},"QUOTE_EXPIRED":{"value":{"code":"QUOTE_EXPIRED","message":"La operación no se puede aplicar en el estado actual.","details":{},"correlation_id":"request_01"}},"HOLD_EXPIRED":{"value":{"code":"HOLD_EXPIRED","message":"La operación no se puede aplicar en el estado actual.","details":{},"correlation_id":"request_01"}},"INVALID_STATE_TRANSITION":{"value":{"code":"INVALID_STATE_TRANSITION","message":"La operación no se puede aplicar en el estado actual.","details":{},"correlation_id":"request_01"}},"IDEMPOTENCY_KEY_REUSED":{"value":{"code":"IDEMPOTENCY_KEY_REUSED","message":"La operación no se puede aplicar en el estado actual.","details":{},"correlation_id":"request_01"}}}}}}
+    Error419: {"description":"Token CSRF ausente o inválido","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"},"example":{"code":"CSRF_TOKEN_MISMATCH","message":"Renueva la sesión e inténtalo de nuevo.","details":{},"correlation_id":"request_01"}}}}
+    Error422: {"description":"Datos fuera del contrato","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"},"example":{"code":"VALIDATION_FAILED","message":"Datos fuera del contrato","details":{},"correlation_id":"request_01"}}}}
+    Error429: {"description":"Límite de solicitudes alcanzado","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"},"example":{"code":"RATE_LIMITED","message":"Límite de solicitudes alcanzado","details":{},"correlation_id":"request_01"}}}}
+    Error500: {"description":"Error interno","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"},"example":{"code":"INTERNAL_ERROR","message":"Error interno","details":{},"correlation_id":"request_01"}}}}
