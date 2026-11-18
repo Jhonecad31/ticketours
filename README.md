@@ -9,6 +9,8 @@ Plataforma SaaS híbrida multempresa para reservaciones genéricas. La organizac
 - [Decisiones de arquitectura](docs/adr/README.md)
 - [Modelo de datos](docs/data-model.md)
 - [Estados de reserva](docs/reservation-states.md)
+- [Reservas directas y vencimientos de Fase 3](docs/reservations-phase-three.md)
+- [Catálogo, tarifas y disponibilidad de Fase 2](docs/catalog-inventory.md)
 - [OpenAPI v1](docs/openapi/v1.yaml)
 - [Decisiones abiertas](docs/OPEN_QUESTIONS.md)
 

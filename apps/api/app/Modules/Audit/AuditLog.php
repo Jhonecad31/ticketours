@@ -10,6 +10,11 @@ class AuditLog
 {
     public function record(Request $request, string $org, int $actor, string $action, string $entity, string $id): void
     {
+        $this->write($org, $actor, $action, $entity, $id, $request->attributes->get('correlation_id'));
+    }
+
+    public function write(string $org, ?int $actor, string $action, string $entity, string $id, string $correlation): void
+    {
         DB::table('audit_events')->insert([
             'id' => (string) Str::uuid(),
             'organization_id' => $org,
@@ -18,7 +23,7 @@ class AuditLog
             'entity_type' => $entity,
             'entity_id' => $id,
             'occurred_at' => now(),
-            'correlation_id' => $request->attributes->get('correlation_id'),
+            'correlation_id' => $correlation,
         ]);
     }
 }

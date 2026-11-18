@@ -6,8 +6,8 @@ export class ApiError extends Error {
   }
 }
 
-export async function api<T>(route: string, body?: object): Promise<T> {
-  const headers: Record<string, string> = { Accept: "application/json" };
+export async function api<T>(route: string, body?: object, method: "POST" | "PATCH" = "POST", extraHeaders: Record<string, string> = {}): Promise<T> {
+  const headers: Record<string, string> = { Accept: "application/json", ...extraHeaders };
   if (body) {
     const { token } = await api<{ token: string }>("/auth/csrf");
     headers["X-CSRF-TOKEN"] = token;
@@ -15,7 +15,7 @@ export async function api<T>(route: string, body?: object): Promise<T> {
   }
 
   const response = await fetch(`/api/v1${route}`, {
-    method: body ? "POST" : "GET",
+    method: body ? method : "GET",
     headers,
     body: body ? JSON.stringify(body) : undefined,
     credentials: "same-origin",

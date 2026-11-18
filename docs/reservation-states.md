@@ -1,6 +1,6 @@
 # Estados de reserva
 
-La matriz inicial describe transiciones que deberán validarse en servidor. Cada cambio persiste el historial con actor, instante, motivo y correlation ID. D05 define quién puede confirmar, cuándo se exige revisión y qué cancelaciones requieren aprobación.
+La Fase 3 habilita la creación en retenida, la confirmación manual por propietario o administrador y la cancelación directa con motivo antes del servicio. El vencimiento registra una transición del sistema y libera inventario. Los flujos planeados de revisión, modificación y aprobación se muestran para fases posteriores. Cada cambio persiste el historial con actor, instante, motivo y correlation ID. D05 define quién puede confirmar, cuándo se exige revisión y qué cancelaciones requieren aprobación.
 
 | Desde | Hacia | Actor o permiso candidato | Efecto |
 |---|---|---|---|

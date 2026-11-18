@@ -1,8 +1,10 @@
 <?php
 
 use App\Models\User;
+use App\Modules\Reservations\ExpireHolds;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schedule;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 
@@ -44,3 +46,5 @@ Artisan::command('ticketours:platform-user {email} {--name=}', function (): int 
 
     return 0;
 })->purpose('Crear una cuenta autorizada para dar de alta organizaciones');
+
+Schedule::job(new ExpireHolds)->everyMinute();

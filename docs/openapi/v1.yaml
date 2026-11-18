@@ -1,5 +1,5 @@
 openapi: "3.0.3"
-info: {"title":"Ticketours API","version":"0.2.0","description":"Identidad, organizaciones, membresías, invitaciones y auditoría corresponden a Fase 1. Los contratos de catálogo y reservas se habilitan según el roadmap. Las mutaciones de Fase 1 requieren X-CSRF-TOKEN obtenido en /auth/csrf. El servidor valida los permisos por organización."}
+info: {"title":"Ticketours API","version":"0.4.0","description":"Fases 1 a 3 activas. La API incluye catálogo, inventario, disponibilidad, clientes, cotizaciones, retenciones y reservas directas. Las mutaciones requieren X-CSRF-TOKEN obtenido en /auth/csrf. Las mutaciones de retenciones y reservas requieren también Idempotency-Key."}
 servers: [{"url":"/api/v1"}]
 security: [{"sessionCookie":[]}]
 x-correlation-headers: &correlationHeaders {"X-Correlation-ID":{"description":"Identificador de correlación asignado por el servidor","schema":{"type":"string"}}}
@@ -156,6 +156,7 @@ paths:
         "500": *error500
     post:
       operationId: "createProduct"
+      parameters: [{"$ref":"#/components/parameters/CsrfToken"}]
       summary: "Crear producto en borrador"
       x-permission: "catalog.write"
       requestBody: {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/ProductInput"}}}}
@@ -166,6 +167,7 @@ paths:
         "403": *error403
         "404": *error404
         "422": *error422
+        "419": *error419
         "429": *error429
         "500": *error500
   /organizations/{org}/product-variants:
@@ -184,6 +186,23 @@ paths:
         "422": *error422
         "429": *error429
         "500": *error500
+    post:
+      operationId: "createVariant"
+      summary: "Crear variante"
+      x-permission: "catalog.write"
+      parameters: [{"$ref":"#/components/parameters/CsrfToken"}]
+      description: "Para añadir variantes a un producto publicado, suspéndelo primero."
+      requestBody: {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/VariantInput"}}}}
+      responses:
+        "201": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Variant"}}}}
+        "400": *error400
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "409": *error409
+        "419": *error419
+        "422": *error422
+        "500": *error500
   /organizations/{org}/sessions:
     parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","minLength":1,"maxLength":128}}]
     get:
@@ -200,6 +219,22 @@ paths:
         "422": *error422
         "429": *error429
         "500": *error500
+    post:
+      operationId: "createSession"
+      summary: "Configurar una sesión con cupo"
+      x-permission: "inventory.write"
+      parameters: [{"$ref":"#/components/parameters/CsrfToken"}]
+      requestBody: {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/SessionInput"}}}}
+      responses:
+        "201": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Session"}}}}
+        "400": *error400
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "409": *error409
+        "419": *error419
+        "422": *error422
+        "500": *error500
   /organizations/{org}/resources:
     parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","minLength":1,"maxLength":128}}]
     get:
@@ -215,6 +250,22 @@ paths:
         "404": *error404
         "422": *error422
         "429": *error429
+        "500": *error500
+    post:
+      operationId: "createResource"
+      summary: "Crear un recurso exclusivo"
+      x-permission: "inventory.write"
+      parameters: [{"$ref":"#/components/parameters/CsrfToken"}]
+      requestBody: {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/ResourceInput"}}}}
+      responses:
+        "201": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Resource"}}}}
+        "400": *error400
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "409": *error409
+        "419": *error419
+        "422": *error422
         "500": *error500
   /organizations/{org}/customers:
     parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","minLength":1,"maxLength":128}}]
@@ -237,6 +288,7 @@ paths:
       summary: "Registrar cliente"
       x-permission: "customers.write"
       requestBody: {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/CustomerInput"}}}}
+      parameters: [{"$ref":"#/components/parameters/CsrfToken"}]
       responses:
         "201": {"description":"Recurso creado","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Customer"}}}}
         "400": *error400
@@ -245,6 +297,7 @@ paths:
         "404": *error404
         "422": *error422
         "429": *error429
+        "419": *error419
         "500": *error500
   /organizations/{org}/audit-events:
     parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","minLength":1,"maxLength":128}}]
@@ -278,6 +331,7 @@ paths:
         "500": *error500
     patch:
       operationId: "updateProduct"
+      parameters: [{"$ref":"#/components/parameters/CsrfToken"}]
       summary: "Editar nombre del producto"
       x-permission: "catalog.write"
       requestBody: {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/ProductInput"}}}}
@@ -289,12 +343,14 @@ paths:
         "404": *error404
         "409": *error409
         "422": *error422
+        "419": *error419
         "429": *error429
         "500": *error500
   /organizations/{org}/availability:
     parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","minLength":1,"maxLength":128}}]
     get:
       operationId: "getAvailability"
+      description: "Solo variantes publicadas. Ventana de consulta hasta 93 días, extremos [inicio, fin). Incluye sesiones completas futuras o ventanas de recursos recortadas al intervalo y descontando bloqueos. La consulta no compromete inventario. Descuenta retenciones vigentes y reservas confirmadas. Para recursos también descuenta bloqueos administrativos."
       summary: "Consultar disponibilidad observada"
       x-permission: "inventory.read"
       parameters: [{"name":"variant_id","in":"query","required":true,"schema":{"type":"string","minLength":1,"maxLength":128}},{"name":"from","in":"query","required":true,"schema":{"type":"string","format":"date-time","description":"Fecha RFC 3339 con desplazamiento explícito. Las respuestas usan UTC."}},{"name":"to","in":"query","required":true,"schema":{"type":"string","format":"date-time","description":"Fecha RFC 3339 con desplazamiento explícito. Las respuestas usan UTC."}},{"name":"resource_id","in":"query","required":false,"schema":{"type":"string","minLength":1,"maxLength":128},"description":"Filtro para modalidad de recurso exclusivo"}]
@@ -312,9 +368,10 @@ paths:
     post:
       operationId: "createQuote"
       summary: "Cotizar una selección"
-      description: "La cotización informa el precio y su vigencia. El cupo se asegura al crear la retención."
+      description: "Cotiza una selección futura con tarifa base y política vigentes. Una sesión multiplica cantidad por tarifa. Un recurso usa tarifa fija por intervalo."
       x-permission: "reservations.quote"
       requestBody: {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/QuoteInput"},"example":{"variant_id":"variant_01","selection":{"session_id":"session_01","quantity":2}}}}}
+      parameters: [{"$ref":"#/components/parameters/CsrfToken"}]
       responses:
         "201": {"description":"Recurso creado","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Quote"}}}}
         "400": *error400
@@ -324,15 +381,16 @@ paths:
         "409": *error409
         "422": *error422
         "429": *error429
+        "419": *error419
         "500": *error500
   /organizations/{org}/holds:
     parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","minLength":1,"maxLength":128}}]
     post:
       operationId: "createHold"
       summary: "Retener inventario"
-      description: "La selección debe coincidir con la cotización vigente. La disponibilidad se comprueba en la transacción."
+      description: "Valida inventario y cotización, que se usa una sola vez. La vigencia se calcula al crear la retención y se limita al inicio del servicio."
       x-permission: "reservations.hold"
-      parameters: [{"$ref":"#/components/parameters/IdempotencyKey"}]
+      parameters: [{"$ref":"#/components/parameters/IdempotencyKey"},{"$ref":"#/components/parameters/CsrfToken"}]
       requestBody: {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/HoldInput"},"example":{"quote_id":"quote_01","selection":{"session_id":"session_01","quantity":2}}}}}
       responses:
         "201": {"description":"Recurso creado","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Hold"}}}}
@@ -343,15 +401,16 @@ paths:
         "409": *error409
         "422": *error422
         "429": *error429
+        "419": *error419
         "500": *error500
   /organizations/{org}/holds/{id}/release:
     parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","minLength":1,"maxLength":128}},{"name":"id","in":"path","required":true,"schema":{"type":"string","minLength":1,"maxLength":128}}]
     post:
       operationId: "releaseHold"
       summary: "Liberar una retención"
-      description: "Devuelve el estado actual si ya fue liberada o venció. Una retención comprometida exige gestionar la reserva. Si la retención tiene una reserva en curso, se deben aplicar las reglas de cancelación de la reserva."
+      description: "Libera retenciones activas sin reserva. Para una reserva activa o confirmada se aplica el flujo de cancelación."
       x-permission: "reservations.hold"
-      parameters: [{"$ref":"#/components/parameters/IdempotencyKey"}]
+      parameters: [{"$ref":"#/components/parameters/IdempotencyKey"},{"$ref":"#/components/parameters/CsrfToken"}]
       responses:
         "200": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Hold"}}}}
         "400": *error400
@@ -360,6 +419,7 @@ paths:
         "404": *error404
         "409": *error409
         "429": *error429
+        "419": *error419
         "500": *error500
   /organizations/{org}/reservations:
     parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","minLength":1,"maxLength":128}}]
@@ -367,8 +427,9 @@ paths:
       operationId: "createReservation"
       summary: "Crear reserva retenida"
       x-permission: "reservations.create"
-      parameters: [{"$ref":"#/components/parameters/IdempotencyKey"}]
+      parameters: [{"$ref":"#/components/parameters/IdempotencyKey"},{"$ref":"#/components/parameters/CsrfToken"}]
       requestBody: {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/ReservationInput"},"example":{"hold_id":"hold_01","customer_id":"customer_01","participants":[{"name":"Cliente de prueba"}]}}}}
+      description: "Crea una reserva retenida a partir de una retención activa. Registra una instantánea de precio y política."
       responses:
         "201": {"description":"Recurso creado","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Reservation"}}}}
         "400": *error400
@@ -378,6 +439,7 @@ paths:
         "409": *error409
         "422": *error422
         "429": *error429
+        "419": *error419
         "500": *error500
   /organizations/{org}/reservations/{id}:
     parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","minLength":1,"maxLength":128}},{"name":"id","in":"path","required":true,"schema":{"type":"string","minLength":1,"maxLength":128}}]
@@ -385,6 +447,7 @@ paths:
       operationId: "getReservation"
       summary: "Consultar reserva"
       x-permission: "reservations.read"
+      description: "Devuelve el estado actual y registra vencimiento si la retención caducó."
       responses:
         "200": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Reservation"}}}}
         "400": *error400
@@ -398,9 +461,9 @@ paths:
     post:
       operationId: "confirmReservation"
       summary: "Confirmar y comprometer inventario"
-      description: "Requiere retención vigente y precondiciones de política. La activación del flujo está sujeta a D05."
+      description: "Confirma manualmente si la retención sigue activa. Propietario o administrador compromete inventario en la misma transacción."
       x-permission: "reservations.confirm"
-      parameters: [{"$ref":"#/components/parameters/IdempotencyKey"}]
+      parameters: [{"$ref":"#/components/parameters/IdempotencyKey"},{"$ref":"#/components/parameters/CsrfToken"}]
       responses:
         "200": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Reservation"}}}}
         "400": *error400
@@ -409,15 +472,16 @@ paths:
         "404": *error404
         "409": *error409
         "429": *error429
+        "419": *error419
         "500": *error500
   /organizations/{org}/reservations/{id}/cancel:
     parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","minLength":1,"maxLength":128}},{"name":"id","in":"path","required":true,"schema":{"type":"string","minLength":1,"maxLength":128}}]
     post:
       operationId: "cancelReservation"
       summary: "Solicitar o aplicar cancelación"
-      description: "Devuelve estado cancelado o pendiente de cancelación según política."
+      description: "Propietario o administrador puede cancelar una reserva retenida o confirmada antes del servicio. Requiere motivo y restituye inventario."
       x-permission: "reservations.cancel"
-      parameters: [{"$ref":"#/components/parameters/IdempotencyKey"}]
+      parameters: [{"$ref":"#/components/parameters/IdempotencyKey"},{"$ref":"#/components/parameters/CsrfToken"}]
       requestBody: {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Cancellation"},"example":{"reason":"Solicitud del cliente"}}}}
       responses:
         "200": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Reservation"}}}}
@@ -428,6 +492,154 @@ paths:
         "409": *error409
         "422": *error422
         "429": *error429
+        "419": *error419
+        "500": *error500
+  /organizations/{org}/products/{id}/status:
+    parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","format":"uuid"}},{"name":"id","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]
+    patch:
+      operationId: "changeProductStatus"
+      summary: "Cambiar estado del producto"
+      x-permission: "catalog.publish"
+      parameters: [{"$ref":"#/components/parameters/CsrfToken"}]
+      description: "Publicar exige una política versionada, al menos una variante, tarifa en cada variante e inventario configurado con fechas vigentes. PRODUCT_NOT_READY e INVALID_PRODUCT_TRANSITION devuelven 409."
+      requestBody: {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/ProductStatusInput"}}}}
+      responses:
+        "200": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Product"}}}}
+        "400": *error400
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "409": *error409
+        "419": *error419
+        "422": *error422
+        "500": *error500
+  /organizations/{org}/resources/{id}/windows:
+    parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","format":"uuid"}},{"name":"id","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]
+    post:
+      operationId: "createResourceWindow"
+      summary: "Habilitar un intervalo para una variante"
+      x-permission: "inventory.write"
+      parameters: [{"$ref":"#/components/parameters/CsrfToken"}]
+      description: "El intervalo usa extremos [inicio, fin). La variante debe ser de recurso exclusivo."
+      requestBody: {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/WindowInput"}}}}
+      responses:
+        "201": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Window"}}}}
+        "400": *error400
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "409": *error409
+        "419": *error419
+        "422": *error422
+        "500": *error500
+  /organizations/{org}/resources/{id}/blocks:
+    parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","format":"uuid"}},{"name":"id","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]
+    post:
+      operationId: "createResourceBlock"
+      summary: "Bloquear un intervalo del recurso"
+      x-permission: "inventory.write"
+      parameters: [{"$ref":"#/components/parameters/CsrfToken"}]
+      description: "El bloqueo afecta al mismo recurso en todas sus variantes."
+      requestBody: {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/BlockInput"}}}}
+      responses:
+        "201": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Block"}}}}
+        "400": *error400
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "409": *error409
+        "419": *error419
+        "422": *error422
+        "500": *error500
+  /organizations/{org}/rates:
+    parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]
+    get:
+      operationId: "listBaseRates"
+      summary: "Listar versiones de tarifa base"
+      x-permission: "pricing.read"
+      parameters: [{"name":"limit","in":"query","required":false,"schema":{"type":"integer","minimum":1,"maximum":100,"default":25}},{"name":"cursor","in":"query","required":false,"schema":{"type":"string","maxLength":1024}},{"name":"variant_id","in":"query","required":true,"schema":{"type":"string","format":"uuid"}}]
+      description: "Versiones ordenadas de mayor a menor."
+      responses:
+        "200": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"type":"object","required":["items","next_cursor"],"properties":{"items":{"type":"array","items":{"$ref":"#/components/schemas/Rate"}},"next_cursor":{"type":"string","nullable":true}}}}}}
+        "400": *error400
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "422": *error422
+        "500": *error500
+    post:
+      operationId: "createBaseRate"
+      summary: "Crear versión de tarifa base"
+      x-permission: "pricing.write"
+      parameters: [{"$ref":"#/components/parameters/CsrfToken"}]
+      requestBody: {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/RateInput"}}}}
+      responses:
+        "201": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Rate"}}}}
+        "400": *error400
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "409": *error409
+        "419": *error419
+        "422": *error422
+        "500": *error500
+  /organizations/{org}/products/{id}/policies:
+    parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","format":"uuid"}},{"name":"id","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]
+    get:
+      operationId: "listProductPolicies"
+      summary: "Listar versiones de políticas"
+      x-permission: "pricing.read"
+      parameters: [{"name":"limit","in":"query","required":false,"schema":{"type":"integer","minimum":1,"maximum":100,"default":25}},{"name":"cursor","in":"query","required":false,"schema":{"type":"string","maxLength":1024}}]
+      description: "Versiones ordenadas de mayor a menor."
+      responses:
+        "200": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"type":"object","required":["items","next_cursor"],"properties":{"items":{"type":"array","items":{"$ref":"#/components/schemas/Policy"}},"next_cursor":{"type":"string","nullable":true}}}}}}
+        "400": *error400
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "422": *error422
+        "500": *error500
+    post:
+      operationId: "createProductPolicy"
+      summary: "Crear versión de política"
+      x-permission: "pricing.write"
+      parameters: [{"$ref":"#/components/parameters/CsrfToken"}]
+      requestBody: {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/PolicyInput"}}}}
+      responses:
+        "201": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Policy"}}}}
+        "400": *error400
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "409": *error409
+        "419": *error419
+        "422": *error422
+        "500": *error500
+  /organizations/{org}/reservation-settings:
+    parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]
+    get:
+      operationId: "getReservationSettings"
+      summary: "Consultar vigencia por organización"
+      x-permission: "reservations.settings"
+      responses:
+        "200": {"description":"Vigencia configurada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/ReservationSettings"}}}}
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "500": *error500
+    patch:
+      operationId: "updateReservationSettings"
+      summary: "Configurar vigencia por organización"
+      x-permission: "reservations.settings"
+      parameters: [{"$ref":"#/components/parameters/CsrfToken"}]
+      requestBody: {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/ReservationSettings"}}}}
+      responses:
+        "200": {"description":"Vigencia configurada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/ReservationSettings"}}}}
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "419": *error419
+        "422": *error422
         "500": *error500
 components:
   securitySchemes:
@@ -436,6 +648,19 @@ components:
     CsrfToken: {"name":"X-CSRF-TOKEN","in":"header","required":true,"description":"Token devuelto por GET /auth/csrf. Renueva el token después del inicio o cierre de sesión.","schema":{"type":"string"}}
     IdempotencyKey: {"name":"Idempotency-Key","in":"header","required":true,"schema":{"type":"string","minLength":1,"maxLength":128},"description":"Repite el resultado de la misma operación. La misma clave con otra solicitud devuelve 409 IDEMPOTENCY_KEY_REUSED."}
   schemas:
+    ReservationSettings: {"type":"object","required":["hold_minutes"],"properties":{"hold_minutes":{"type":"integer","minimum":1,"maximum":1440,"default":15}}}
+    Policy: {"type":"object","required":["id","product_id","version","terms"],"properties":{"id":{"type":"string","format":"uuid"},"product_id":{"type":"string","format":"uuid"},"version":{"type":"integer","minimum":1},"terms":{"type":"string","minLength":1,"maxLength":5000}}}
+    PolicyInput: {"type":"object","required":["terms"],"properties":{"terms":{"type":"string","minLength":1,"maxLength":5000}}}
+    Rate: {"type":"object","required":["id","variant_id","amount","currency","version"],"properties":{"id":{"type":"string","format":"uuid"},"variant_id":{"type":"string","format":"uuid"},"amount":{"type":"string","pattern":"^(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,12})?$","example":"250.00","description":"Importe exacto enviado como cadena decimal, con hasta 18 enteros y 12 decimales."},"currency":{"type":"string","pattern":"^[A-Z]{3}$","example":"MXN"},"version":{"type":"integer","minimum":1}}}
+    RateInput: {"type":"object","required":["variant_id","amount","currency"],"properties":{"variant_id":{"type":"string","format":"uuid"},"amount":{"type":"string","pattern":"^(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,12})?$","example":"250.00","description":"Importe exacto enviado como cadena decimal, con hasta 18 enteros y 12 decimales."},"currency":{"type":"string","pattern":"^[A-Z]{3}$","example":"MXN"}}}
+    Block: {"type":"object","required":["id","resource_id","start_at","end_at"],"properties":{"id":{"type":"string","format":"uuid"},"resource_id":{"type":"string","format":"uuid"},"start_at":{"type":"string","format":"date-time","description":"Instante UTC"},"end_at":{"type":"string","format":"date-time","description":"Instante UTC"}}}
+    BlockInput: {"type":"object","required":["start_at","end_at"],"properties":{"start_at":{"type":"string","format":"date-time","pattern":"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:Z|[+-][0-9]{2}:[0-9]{2})$","description":"RFC 3339 con segundos y desplazamiento explícito."},"end_at":{"type":"string","format":"date-time","pattern":"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:Z|[+-][0-9]{2}:[0-9]{2})$","description":"RFC 3339 con segundos y desplazamiento explícito."}}}
+    Window: {"type":"object","required":["id","resource_id","variant_id","start_at","end_at"],"properties":{"id":{"type":"string","format":"uuid"},"resource_id":{"type":"string","format":"uuid"},"variant_id":{"type":"string","format":"uuid"},"start_at":{"type":"string","format":"date-time","description":"Instante UTC"},"end_at":{"type":"string","format":"date-time","description":"Instante UTC"}}}
+    WindowInput: {"type":"object","required":["variant_id","start_at","end_at"],"properties":{"variant_id":{"type":"string","format":"uuid"},"start_at":{"type":"string","format":"date-time","pattern":"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:Z|[+-][0-9]{2}:[0-9]{2})$","description":"RFC 3339 con segundos y desplazamiento explícito."},"end_at":{"type":"string","format":"date-time","pattern":"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:Z|[+-][0-9]{2}:[0-9]{2})$","description":"RFC 3339 con segundos y desplazamiento explícito."}}}
+    ProductStatusInput: {"type":"object","required":["status"],"properties":{"status":{"type":"string","enum":["draft","review","published","suspended","archived"]}}}
+    ResourceInput: {"type":"object","required":["name"],"properties":{"name":{"type":"string","minLength":1,"maxLength":200}}}
+    VariantInput: {"type":"object","required":["product_id","name","modality"],"properties":{"product_id":{"type":"string","format":"uuid"},"name":{"type":"string","minLength":1,"maxLength":200},"modality":{"type":"string","enum":["session","exclusive_resource"]}}}
+    SessionInput: {"type":"object","required":["variant_id","start_at","end_at","capacity"],"properties":{"variant_id":{"type":"string","format":"uuid"},"start_at":{"type":"string","format":"date-time","pattern":"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:Z|[+-][0-9]{2}:[0-9]{2})$","description":"RFC 3339 con segundos y desplazamiento explícito."},"end_at":{"type":"string","format":"date-time","pattern":"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:Z|[+-][0-9]{2}:[0-9]{2})$","description":"RFC 3339 con segundos y desplazamiento explícito."},"capacity":{"type":"integer","minimum":1,"maximum":2147483647}}}
     Error: {"type":"object","required":["code","message","details","correlation_id"],"properties":{"code":{"type":"string"},"message":{"type":"string"},"details":{"type":"object","additionalProperties":true},"correlation_id":{"type":"string"}}}
     Organization: {"type":"object","required":["id","name","time_zone"],"properties":{"id":{"type":"string","minLength":1,"maxLength":128},"name":{"type":"string","minLength":1,"maxLength":200},"time_zone":{"type":"string","example":"America/Cancun","description":"Identificador de zona IANA"}}}
     OrganizationInput: {"type":"object","required":["name","time_zone"],"properties":{"name":{"type":"string","minLength":1,"maxLength":200},"time_zone":{"type":"string","example":"America/Cancun","description":"Identificador de zona IANA"}}}
@@ -449,7 +674,7 @@ components:
     Product: {"type":"object","required":["id","name","status"],"properties":{"id":{"type":"string","minLength":1,"maxLength":128},"name":{"type":"string","minLength":1,"maxLength":200},"status":{"type":"string","enum":["draft","review","published","suspended","archived"]}}}
     ProductInput: {"type":"object","required":["name"],"properties":{"name":{"type":"string","minLength":1,"maxLength":200}}}
     Variant: {"type":"object","required":["id","product_id","name","modality"],"properties":{"id":{"type":"string","minLength":1,"maxLength":128},"product_id":{"type":"string","minLength":1,"maxLength":128},"name":{"type":"string","minLength":1,"maxLength":200},"modality":{"type":"string","enum":["session","exclusive_resource"]}}}
-    Session: {"type":"object","required":["id","variant_id","start_at","end_at"],"properties":{"id":{"type":"string","minLength":1,"maxLength":128},"variant_id":{"type":"string","minLength":1,"maxLength":128},"start_at":{"type":"string","format":"date-time","description":"Fecha RFC 3339 con desplazamiento explícito. Las respuestas usan UTC."},"end_at":{"type":"string","format":"date-time","description":"Fecha RFC 3339 con desplazamiento explícito. Las respuestas usan UTC."}}}
+    Session: {"type":"object","required":["id","variant_id","start_at","end_at","capacity"],"properties":{"id":{"type":"string","format":"uuid"},"variant_id":{"type":"string","format":"uuid"},"start_at":{"type":"string","format":"date-time","description":"Instante UTC"},"end_at":{"type":"string","format":"date-time","description":"Instante UTC"},"capacity":{"type":"integer","minimum":1,"maximum":2147483647}}}
     Resource: {"type":"object","required":["id","name"],"properties":{"id":{"type":"string","minLength":1,"maxLength":128},"name":{"type":"string","minLength":1,"maxLength":200}}}
     Selection: {"oneOf":[{"type":"object","required":["session_id","quantity"],"properties":{"session_id":{"type":"string","minLength":1,"maxLength":128},"quantity":{"type":"integer","minimum":1}},"additionalProperties":false},{"type":"object","required":["resource_id","start_at","end_at"],"properties":{"resource_id":{"type":"string","minLength":1,"maxLength":128},"start_at":{"type":"string","format":"date-time","description":"Fecha RFC 3339 con desplazamiento explícito. Las respuestas usan UTC."},"end_at":{"type":"string","format":"date-time","description":"Fecha RFC 3339 con desplazamiento explícito. Las respuestas usan UTC."}},"additionalProperties":false}]}
     Availability: {"type":"object","required":["variant_id","time_zone","items"],"properties":{"variant_id":{"type":"string","minLength":1,"maxLength":128},"time_zone":{"type":"string","example":"America/Cancun","description":"Identificador de zona IANA"},"items":{"type":"array","items":{"oneOf":[{"type":"object","required":["session_id","start_at","end_at","available_quantity"],"properties":{"session_id":{"type":"string","minLength":1,"maxLength":128},"start_at":{"type":"string","format":"date-time","description":"Fecha RFC 3339 con desplazamiento explícito. Las respuestas usan UTC."},"end_at":{"type":"string","format":"date-time","description":"Fecha RFC 3339 con desplazamiento explícito. Las respuestas usan UTC."},"available_quantity":{"type":"integer","minimum":0}},"additionalProperties":false},{"type":"object","required":["resource_id","start_at","end_at"],"properties":{"resource_id":{"type":"string","minLength":1,"maxLength":128},"start_at":{"type":"string","format":"date-time","description":"Fecha RFC 3339 con desplazamiento explícito. Las respuestas usan UTC."},"end_at":{"type":"string","format":"date-time","description":"Fecha RFC 3339 con desplazamiento explícito. Las respuestas usan UTC."}},"additionalProperties":false}]}}}}
@@ -458,12 +683,12 @@ components:
     HoldInput: {"type":"object","required":["quote_id","selection"],"properties":{"quote_id":{"type":"string","minLength":1,"maxLength":128},"selection":{"$ref":"#/components/schemas/Selection"}}}
     Hold: {"type":"object","required":["id","quote_id","selection","status","expires_at"],"properties":{"id":{"type":"string","minLength":1,"maxLength":128},"quote_id":{"type":"string","minLength":1,"maxLength":128},"selection":{"$ref":"#/components/schemas/Selection"},"status":{"type":"string","enum":["active","released","expired","committed"]},"expires_at":{"type":"string","format":"date-time","description":"Fecha RFC 3339 con desplazamiento explícito. Las respuestas usan UTC."}}}
     ReservationInput: {"type":"object","required":["hold_id","customer_id"],"properties":{"hold_id":{"type":"string","minLength":1,"maxLength":128},"customer_id":{"type":"string","minLength":1,"maxLength":128},"participants":{"type":"array","items":{"type":"object","required":["name"],"properties":{"name":{"type":"string","minLength":1,"maxLength":200}}}}}}
-    Reservation: {"type":"object","required":["id","hold_id","customer_id","status","items"],"properties":{"id":{"type":"string","minLength":1,"maxLength":128},"hold_id":{"type":"string","minLength":1,"maxLength":128},"customer_id":{"type":"string","minLength":1,"maxLength":128},"status":{"type":"string","enum":["draft","held","pending_confirmation","confirmed","pending_modification","pending_cancellation","cancelled","expired","rejected"]},"items":{"type":"array","items":{"$ref":"#/components/schemas/ReservationItem"}}}}
+    Reservation: {"type":"object","required":["id","hold_id","customer_id","status","items"],"properties":{"id":{"type":"string","minLength":1,"maxLength":128},"hold_id":{"type":"string","minLength":1,"maxLength":128},"customer_id":{"type":"string","minLength":1,"maxLength":128},"status":{"type":"string","enum":["held","confirmed","cancelled","expired"]},"items":{"type":"array","items":{"$ref":"#/components/schemas/ReservationItem"}}}}
     ReservationItem: {"type":"object","required":["id","variant_id","selection","total","currency","rate_version_id","policy_version_id"],"properties":{"id":{"type":"string","minLength":1,"maxLength":128},"variant_id":{"type":"string","minLength":1,"maxLength":128},"selection":{"$ref":"#/components/schemas/Selection"},"total":{"type":"string","pattern":"^[0-9]+(\\.[0-9]+)?$","example":"250.00"},"currency":{"type":"string","pattern":"^[A-Z]{3}$","example":"MXN"},"rate_version_id":{"type":"string","minLength":1,"maxLength":128},"policy_version_id":{"type":"string","minLength":1,"maxLength":128}}}
     Cancellation: {"type":"object","required":["reason"],"properties":{"reason":{"type":"string","minLength":1,"maxLength":500}}}
-    CustomerInput: {"type":"object","required":["name"],"properties":{"name":{"type":"string","minLength":1,"maxLength":200},"email":{"type":"string","format":"email"}}}
-    Customer: {"type":"object","required":["id","name"],"properties":{"id":{"type":"string","minLength":1,"maxLength":128},"name":{"type":"string","minLength":1,"maxLength":200},"email":{"type":"string","format":"email"}}}
-    AuditEvent: {"type":"object","required":["id","action","entity_type","entity_id","occurred_at","correlation_id"],"properties":{"id":{"type":"string","minLength":1,"maxLength":128},"actor_id":{"type":"string","minLength":1,"maxLength":128},"action":{"type":"string"},"entity_type":{"type":"string"},"entity_id":{"type":"string","minLength":1,"maxLength":128},"occurred_at":{"type":"string","format":"date-time","description":"Fecha RFC 3339 con desplazamiento explícito. Las respuestas usan UTC."},"correlation_id":{"type":"string"}}}
+    CustomerInput: {"type":"object","required":["name"],"properties":{"name":{"type":"string","minLength":1,"maxLength":200},"email":{"type":"string","format":"email","nullable":true}}}
+    Customer: {"type":"object","required":["id","name"],"properties":{"id":{"type":"string","minLength":1,"maxLength":128},"name":{"type":"string","minLength":1,"maxLength":200},"email":{"type":"string","format":"email","nullable":true}}}
+    AuditEvent: {"type":"object","required":["id","action","entity_type","entity_id","occurred_at","correlation_id"],"properties":{"id":{"type":"string","minLength":1,"maxLength":128},"actor_id":{"type":"string","minLength":1,"maxLength":128,"nullable":true},"action":{"type":"string"},"entity_type":{"type":"string"},"entity_id":{"type":"string","minLength":1,"maxLength":128},"occurred_at":{"type":"string","format":"date-time","description":"Fecha RFC 3339 con desplazamiento explícito. Las respuestas usan UTC."},"correlation_id":{"type":"string"}}}
   responses:
     Error400: {"description":"Solicitud inválida","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"},"example":{"code":"INVALID_REQUEST","message":"Solicitud inválida","details":{},"correlation_id":"request_01"}}}}
     Error401: {"description":"Autenticación requerida o credenciales inválidas","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"},"example":{"code":"UNAUTHENTICATED","message":"Autenticación requerida o credenciales inválidas","details":{},"correlation_id":"request_01"}}}}

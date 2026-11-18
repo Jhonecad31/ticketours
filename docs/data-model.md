@@ -63,3 +63,15 @@ Catálogo con referencias históricas pasa a archivado. Reservas, historial y au
 - **Acceso.** Boleto vinculado a un derecho de reserva y validación vinculada al boleto. El estado operativo se mantiene por separado.
 - **Distribución.** Convenio entre proveedor y distribuidor. Publicación comercial sobre catálogo del proveedor. Comisión vinculada a la venta atribuida. Liquidación agrupa movimientos conforme a D07 y D08.
 - **Integraciones.** Integración con ámbito de plataforma u organización. Evento y entrega de webhook con identificador, intentos y resultado para deduplicar y auditar.
+
+## Tablas implementadas en Fase 2
+
+La configuración de sesiones con cupo vive en `inventory_sessions`. Cada registro incluye la capacidad de la sesión. Los calendarios de recurso se representan mediante `resource_windows` y `resource_blocks`. Las tarifas base viven en `base_rate_versions` y las políticas en `product_policy_versions`. Las relaciones privadas usan claves foráneas compuestas de organización e identificador.
+
+Consulta las [reglas de catálogo e inventario](catalog-inventory.md).
+
+## Tablas implementadas en Fase 3
+
+La cotización conserva la selección y referencias a las versiones de tarifa y política. Una retención referencia una cotización y una sesión o un recurso del mismo ámbito. La reserva referencia un cliente y una retención del mismo ámbito. Cada ítem conserva selección, importe, moneda y términos históricos. El historial registra cada transición con su correlación y actor, que puede ser el sistema.
+
+Las claves únicas impiden reutilizar una cotización para otra retención o una retención para otra reserva. PostgreSQL excluye los intervalos activos o comprometidos que se solapan en un recurso. Los resultados de mutaciones idempotentes se identifican por organización, actor, operación y clave. Consulta [reservas directas y vencimientos](reservations-phase-three.md).

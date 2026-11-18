@@ -35,7 +35,7 @@ class AuditController
         return response()->json([
             'items' => $events->getCollection()->map(fn ($event) => [
                 ...((array) $event),
-                'actor_id' => (string) $event->actor_id,
+                'actor_id' => $event->actor_id === null ? null : (string) $event->actor_id,
                 'occurred_at' => Carbon::parse($event->occurred_at, 'UTC')->toISOString(),
             ]),
             'next_cursor' => PageCursor::next($request, $events->nextCursor()),
