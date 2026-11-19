@@ -1,5 +1,5 @@
 openapi: "3.0.3"
-info: {"title":"Ticketours API","version":"0.4.0","description":"Fases 1 a 3 activas. La API incluye catálogo, inventario, disponibilidad, clientes, cotizaciones, retenciones y reservas directas. Las mutaciones requieren X-CSRF-TOKEN obtenido en /auth/csrf. Las mutaciones de retenciones y reservas requieren también Idempotency-Key."}
+info: {"title":"Ticketours API","version":"0.7.0","description":"Fases 1 a 6 activas. Incluye boletos QR, check-in en línea, conciliación, liquidaciones simuladas, reportes y webhooks locales firmados."}
 servers: [{"url":"/api/v1"}]
 security: [{"sessionCookie":[]}]
 x-correlation-headers: &correlationHeaders {"X-Correlation-ID":{"description":"Identificador de correlación asignado por el servidor","schema":{"type":"string"}}}
@@ -461,7 +461,7 @@ paths:
     post:
       operationId: "confirmReservation"
       summary: "Confirmar y comprometer inventario"
-      description: "Confirma manualmente si la retención sigue activa. Propietario o administrador compromete inventario en la misma transacción."
+      description: "Confirma manualmente mientras la retención siga vigente. Exige el pago total o al menos 50 % si la política cotizada lo permite. Compromete inventario y emite el voucher."
       x-permission: "reservations.confirm"
       parameters: [{"$ref":"#/components/parameters/IdempotencyKey"},{"$ref":"#/components/parameters/CsrfToken"}]
       responses:
@@ -479,7 +479,7 @@ paths:
     post:
       operationId: "cancelReservation"
       summary: "Solicitar o aplicar cancelación"
-      description: "Propietario o administrador puede cancelar una reserva retenida o confirmada antes del servicio. Requiere motivo y restituye inventario."
+      description: "Cancela con motivo antes del inicio. Restituye el inventario y reembolsa todos los abonos simulados en la misma transacción."
       x-permission: "reservations.cancel"
       parameters: [{"$ref":"#/components/parameters/IdempotencyKey"},{"$ref":"#/components/parameters/CsrfToken"}]
       requestBody: {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Cancellation"},"example":{"reason":"Solicitud del cliente"}}}}
@@ -641,6 +641,445 @@ paths:
         "419": *error419
         "422": *error422
         "500": *error500
+  /organizations/{org}/reservations/{id}/order:
+    parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","format":"uuid"}},{"name":"id","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]
+    get:
+      operationId: "getSalesOrder"
+      summary: "Consultar pedido de reserva"
+      x-permission: "sales.read"
+      responses:
+        "200": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/SalesOrder"}}}}
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "500": *error500
+  /organizations/{org}/reservations/{id}/payments:
+    parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","format":"uuid"}},{"name":"id","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]
+    post:
+      operationId: "simulatePayment"
+      summary: "Registrar un abono simulado"
+      x-permission: "sales.pay"
+      parameters: [{"$ref":"#/components/parameters/CsrfToken"},{"$ref":"#/components/parameters/IdempotencyKey"}]
+      requestBody: {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/SimulatedPaymentInput"}}}}
+      responses:
+        "201": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/SimulatedPaymentResult"}}}}
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "409": *error409
+        "419": *error419
+        "422": *error422
+        "500": *error500
+  /organizations/{org}/reservations/{id}/voucher:
+    parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","format":"uuid"}},{"name":"id","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]
+    get:
+      operationId: "getReservationVoucher"
+      summary: "Consultar voucher de prueba"
+      x-permission: "sales.read"
+      responses:
+        "200": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/ReservationVoucher"}}}}
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "500": *error500
+  /organizations/{org}/distribution/agreements:
+    parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]
+    get:
+      operationId: "listAgreements"
+      summary: "Listar convenios"
+      x-permission: "distribution.manage"
+      parameters: [{"name":"cursor","in":"query","schema":{"type":"string"}},{"name":"limit","in":"query","schema":{"type":"integer","minimum":1,"maximum":100,"default":25}}]
+      responses:
+        "200": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"type":"object","required":["items","next_cursor"],"properties":{"items":{"type":"array","items":{"$ref":"#/components/schemas/Agreement"}},"next_cursor":{"type":"string","nullable":true}}}}}}
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "422": *error422
+        "500": *error500
+    post:
+      operationId: "proposeAgreement"
+      summary: "Proponer convenio"
+      x-permission: "distribution.manage"
+      parameters: [{"$ref":"#/components/parameters/CsrfToken"}]
+      requestBody: {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/AgreementInput"}}}}
+      responses:
+        "201": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Agreement"}}}}
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "409": *error409
+        "419": *error419
+        "422": *error422
+        "500": *error500
+  /organizations/{org}/distribution/agreements/{id}:
+    parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","format":"uuid"}},{"name":"id","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]
+    patch:
+      operationId: "transitionAgreement"
+      summary: "Cambiar estado del convenio"
+      x-permission: "distribution.manage"
+      parameters: [{"$ref":"#/components/parameters/CsrfToken"}]
+      requestBody: {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/AgreementTransition"}}}}
+      responses:
+        "200": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Agreement"}}}}
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "409": *error409
+        "419": *error419
+        "422": *error422
+        "500": *error500
+  /organizations/{org}/distribution/agreements/{id}/offers:
+    parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","format":"uuid"}},{"name":"id","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]
+    post:
+      operationId: "publishDistributionOffer"
+      summary: "Publicar variante y tarifa autorizadas"
+      x-permission: "distribution.manage"
+      parameters: [{"$ref":"#/components/parameters/CsrfToken"}]
+      requestBody: {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/OfferInput"}}}}
+      responses:
+        "201": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/DistributionOffer"}}}}
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "409": *error409
+        "419": *error419
+        "422": *error422
+        "500": *error500
+  /organizations/{org}/distribution/offers:
+    parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]
+    get:
+      operationId: "listDistributionOffers"
+      summary: "Listar ofertas visibles"
+      x-permission: "distribution.book"
+      parameters: [{"name":"cursor","in":"query","schema":{"type":"string"}},{"name":"limit","in":"query","schema":{"type":"integer","minimum":1,"maximum":100,"default":25}}]
+      responses:
+        "200": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"type":"object","required":["items","next_cursor"],"properties":{"items":{"type":"array","items":{"$ref":"#/components/schemas/VisibleDistributionOffer"}},"next_cursor":{"type":"string","nullable":true}}}}}}
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "422": *error422
+        "500": *error500
+  /organizations/{org}/distribution/offers/{id}:
+    parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","format":"uuid"}},{"name":"id","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]
+    patch:
+      operationId: "changeDistributionOffer"
+      summary: "Habilitar o deshabilitar una oferta"
+      x-permission: "distribution.manage"
+      parameters: [{"$ref":"#/components/parameters/CsrfToken"}]
+      requestBody: {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/OfferEnabled"}}}}
+      responses:
+        "200": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/DistributionOffer"}}}}
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "409": *error409
+        "419": *error419
+        "422": *error422
+        "500": *error500
+  /organizations/{org}/distribution/offers/{id}/availability:
+    parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","format":"uuid"}},{"name":"id","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]
+    get:
+      operationId: "getDistributionAvailability"
+      summary: "Consultar cupo del proveedor"
+      x-permission: "distribution.book"
+      parameters: [{"name":"from","in":"query","required":true,"schema":{"type":"string","format":"date-time"}},{"name":"to","in":"query","required":true,"schema":{"type":"string","format":"date-time"}},{"name":"resource_id","in":"query","schema":{"type":"string","format":"uuid"}}]
+      responses:
+        "200": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Availability"}}}}
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "422": *error422
+        "500": *error500
+  /organizations/{org}/distribution/offers/{id}/quotes:
+    parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","format":"uuid"}},{"name":"id","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]
+    post:
+      operationId: "quoteDistributionOffer"
+      summary: "Cotizar oferta"
+      x-permission: "distribution.book"
+      parameters: [{"$ref":"#/components/parameters/CsrfToken"}]
+      requestBody: {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/DistributionQuoteInput"}}}}
+      responses:
+        "201": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Quote"}}}}
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "409": *error409
+        "419": *error419
+        "422": *error422
+        "500": *error500
+  /organizations/{org}/distribution/offers/{id}/holds:
+    parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","format":"uuid"}},{"name":"id","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]
+    post:
+      operationId: "holdDistributionOffer"
+      summary: "Retener cupo del proveedor"
+      x-permission: "distribution.book"
+      parameters: [{"$ref":"#/components/parameters/CsrfToken"},{"$ref":"#/components/parameters/IdempotencyKey"}]
+      requestBody: {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/HoldInput"}}}}
+      responses:
+        "201": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Hold"}}}}
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "409": *error409
+        "419": *error419
+        "422": *error422
+        "500": *error500
+  /organizations/{org}/distribution/offers/{id}/holds/{hold}/release:
+    parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","format":"uuid"}},{"name":"id","in":"path","required":true,"schema":{"type":"string","format":"uuid"}},{"name":"hold","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]
+    post:
+      operationId: "releaseDistributionHold"
+      summary: "Liberar retención de agencia"
+      x-permission: "distribution.book"
+      parameters: [{"$ref":"#/components/parameters/CsrfToken"},{"$ref":"#/components/parameters/IdempotencyKey"}]
+      responses:
+        "200": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Hold"}}}}
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "409": *error409
+        "419": *error419
+        "422": *error422
+        "500": *error500
+  /organizations/{org}/distribution/offers/{id}/reservations:
+    parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","format":"uuid"}},{"name":"id","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]
+    post:
+      operationId: "reserveDistributionOffer"
+      summary: "Registrar reserva distribuida"
+      x-permission: "distribution.book"
+      parameters: [{"$ref":"#/components/parameters/CsrfToken"},{"$ref":"#/components/parameters/IdempotencyKey"}]
+      requestBody: {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/ReservationInput"}}}}
+      responses:
+        "201": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Reservation"}}}}
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "409": *error409
+        "419": *error419
+        "422": *error422
+        "500": *error500
+  /organizations/{org}/distribution/sales:
+    parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]
+    get:
+      operationId: "listAgencySales"
+      summary: "Consultar ventas por agencia"
+      x-permission: "distribution.book"
+      parameters: [{"name":"cursor","in":"query","schema":{"type":"string"}},{"name":"limit","in":"query","schema":{"type":"integer","minimum":1,"maximum":100,"default":25}}]
+      responses:
+        "200": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"type":"object","required":["items","next_cursor"],"properties":{"items":{"type":"array","items":{"$ref":"#/components/schemas/AgencySale"}},"next_cursor":{"type":"string","nullable":true}}}}}}
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "422": *error422
+        "500": *error500
+  /organizations/{org}/distribution/commissions:
+    parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]
+    get:
+      operationId: "listCommissions"
+      summary: "Consultar movimientos de comisión"
+      x-permission: "distribution.manage"
+      parameters: [{"name":"cursor","in":"query","schema":{"type":"string"}},{"name":"limit","in":"query","schema":{"type":"integer","minimum":1,"maximum":100,"default":25}}]
+      responses:
+        "200": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"type":"object","required":["items","next_cursor"],"properties":{"items":{"type":"array","items":{"$ref":"#/components/schemas/CommissionEntry"}},"next_cursor":{"type":"string","nullable":true}}}}}}
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "422": *error422
+        "500": *error500
+  /organizations/{org}/distribution/commission-balances:
+    parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]
+    get:
+      operationId: "getCommissionBalances"
+      summary: "Consultar saldos por moneda"
+      x-permission: "distribution.manage"
+      responses:
+        "200": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"type":"object","required":["items"],"properties":{"items":{"type":"array","items":{"$ref":"#/components/schemas/CommissionBalance"}}}}}}}
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "422": *error422
+        "500": *error500
+  /organizations/{org}/reservations/{id}/tickets:
+    parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","format":"uuid"}},{"name":"id","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]
+    get:
+      operationId: "getReservationTickets"
+      summary: "Consultar boletos QR"
+      x-permission: "sales.read"
+      description: "Hasta 50 boletos por página. Impresión para una reserva confirmada con voucher."
+      parameters: [{"name":"from","in":"query","required":false,"schema":{"type":"integer","minimum":1,"maximum":2147483647}}]
+      responses:
+        "200": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/TicketPage"}}}}
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "422": *error422
+        "429": *error429
+        "500": *error500
+  /organizations/{org}/operations/check-ins:
+    parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]
+    post:
+      operationId: "checkInTicket"
+      summary: "Registrar un acceso único"
+      x-permission: "operations.checkin"
+      description: "Disponible desde 30 minutos antes del inicio hasta el fin del servicio. Un segundo uso se rechaza."
+      parameters: [{"$ref":"#/components/parameters/CsrfToken"},{"$ref":"#/components/parameters/IdempotencyKey"}]
+      requestBody: {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/TicketCheckinInput"}}}}
+      responses:
+        "201": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/TicketCheckin"}}}}
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "409": *error409
+        "419": *error419
+        "422": *error422
+        "429": *error429
+        "500": *error500
+  /organizations/{org}/operations/validators:
+    parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]
+    get:
+      operationId: "listValidators"
+      summary: "Consultar validadores delegados"
+      x-permission: "operations.manage"
+      responses:
+        "200": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Validators"}}}}
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "422": *error422
+        "429": *error429
+        "500": *error500
+    patch:
+      operationId: "changeValidator"
+      summary: "Conceder o revocar permiso de check-in"
+      x-permission: "operations.manage"
+      parameters: [{"$ref":"#/components/parameters/CsrfToken"}]
+      requestBody: {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/ValidatorInput"}}}}
+      responses:
+        "200": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Validator"}}}}
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "409": *error409
+        "419": *error419
+        "422": *error422
+        "429": *error429
+        "500": *error500
+  /organizations/{org}/distribution/settlements:
+    parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]
+    get:
+      operationId: "listSettlements"
+      summary: "Consultar liquidaciones visibles"
+      x-permission: "settlements.read"
+      parameters: [{"name":"cursor","in":"query","required":false,"schema":{"type":"string"}},{"name":"limit","in":"query","required":false,"schema":{"type":"integer","minimum":1,"maximum":100,"default":25}}]
+      responses:
+        "200": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"type":"object","required":["items","next_cursor"],"properties":{"items":{"type":"array","items":{"$ref":"#/components/schemas/Settlement"}},"next_cursor":{"type":"string","nullable":true}}}}}}
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "422": *error422
+        "429": *error429
+        "500": *error500
+    post:
+      operationId: "reconcileSettlement"
+      summary: "Conciliar un corte de comisión"
+      x-permission: "settlements.manage"
+      parameters: [{"$ref":"#/components/parameters/CsrfToken"},{"$ref":"#/components/parameters/IdempotencyKey"}]
+      requestBody: {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/SettlementInput"}}}}
+      responses:
+        "201": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Settlement"}}}}
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "409": *error409
+        "419": *error419
+        "422": *error422
+        "429": *error429
+        "500": *error500
+  /organizations/{org}/distribution/settlements/{id}:
+    parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","format":"uuid"}},{"name":"id","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]
+    patch:
+      operationId: "transitionSettlement"
+      summary: "Volver a conciliar, aprobar o pagar en el simulador"
+      x-permission: "settlements.manage"
+      parameters: [{"$ref":"#/components/parameters/CsrfToken"},{"$ref":"#/components/parameters/IdempotencyKey"}]
+      requestBody: {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/SettlementTransition"}}}}
+      responses:
+        "200": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Settlement"}}}}
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "409": *error409
+        "419": *error419
+        "422": *error422
+        "429": *error429
+        "500": *error500
+  /organizations/{org}/distribution/settlements/{id}/items:
+    parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","format":"uuid"}},{"name":"id","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]
+    get:
+      operationId: "listSettlementItems"
+      summary: "Consultar movimientos vinculados"
+      x-permission: "settlements.read"
+      parameters: [{"name":"cursor","in":"query","required":false,"schema":{"type":"string"}},{"name":"limit","in":"query","required":false,"schema":{"type":"integer","minimum":1,"maximum":100,"default":25}}]
+      responses:
+        "200": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"type":"object","required":["items","next_cursor"],"properties":{"items":{"type":"array","items":{"$ref":"#/components/schemas/CommissionEntry"}},"next_cursor":{"type":"string","nullable":true}}}}}}
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "422": *error422
+        "429": *error429
+        "500": *error500
+  /organizations/{org}/reports/summary:
+    parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]
+    get:
+      operationId: "getOperationsReport"
+      summary: "Resumen por organización y período"
+      x-permission: "reports.read"
+      parameters: [{"name":"from","in":"query","required":true,"schema":{"type":"string","format":"date-time"}},{"name":"to","in":"query","required":true,"schema":{"type":"string","format":"date-time"}}]
+      responses:
+        "200": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/OperationReport"}}}}
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "422": *error422
+        "429": *error429
+        "500": *error500
+  /organizations/{org}/integrations/simulate:
+    parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]
+    post:
+      operationId: "simulateWebhook"
+      summary: "Emitir un webhook local de prueba"
+      x-permission: "integrations.simulate"
+      parameters: [{"$ref":"#/components/parameters/CsrfToken"}]
+      requestBody: {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/WebhookSimulationInput"}}}}
+      responses:
+        "200": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/WebhookReceipt"}}}}
+        "202": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/WebhookReceipt"}}}}
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "409": *error409
+        "419": *error419
+        "422": *error422
+        "429": *error429
+        "500": *error500
+  /integrations/{org}/webhook:
+    parameters: [{"name":"org","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]
+    post:
+      operationId: "receiveWebhook"
+      summary: "Recibir un webhook firmado"
+      description: "Firma HMAC por organización. Deduplicación por evento y contenido."
+      security: []
+      parameters: [{"name":"X-Ticketours-Timestamp","in":"header","required":true,"schema":{"type":"string"}},{"name":"X-Ticketours-Signature","in":"header","required":true,"schema":{"type":"string"}}]
+      requestBody: {"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/WebhookBody"}}}}
+      responses:
+        "200": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/WebhookReceipt"}}}}
+        "202": {"description":"Operación completada","headers":*correlationHeaders,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/WebhookReceipt"}}}}
+        "401": *error401
+        "403": *error403
+        "404": *error404
+        "409": *error409
+        "422": *error422
+        "429": *error429
+        "500": *error500
 components:
   securitySchemes:
     sessionCookie: {"type":"apiKey","in":"cookie","name":"ticketours_session"}
@@ -648,9 +1087,40 @@ components:
     CsrfToken: {"name":"X-CSRF-TOKEN","in":"header","required":true,"description":"Token devuelto por GET /auth/csrf. Renueva el token después del inicio o cierre de sesión.","schema":{"type":"string"}}
     IdempotencyKey: {"name":"Idempotency-Key","in":"header","required":true,"schema":{"type":"string","minLength":1,"maxLength":128},"description":"Repite el resultado de la misma operación. La misma clave con otra solicitud devuelve 409 IDEMPOTENCY_KEY_REUSED."}
   schemas:
+    Ticket: {"type":"object","required":["number","code","used"],"properties":{"number":{"type":"integer","minimum":1,"maximum":2147483647},"code":{"type":"string","pattern":"^[a-f0-9-]{36}\\.[1-9][0-9]{0,9}\\.[a-f0-9]{64}$"},"used":{"type":"boolean"}}}
+    TicketPage: {"type":"object","required":["items","next_from","quantity","operation_status"],"properties":{"items":{"type":"array","items":{"$ref":"#/components/schemas/Ticket"}},"next_from":{"type":"integer","minimum":1,"maximum":2147483647,"nullable":true},"quantity":{"type":"integer","minimum":1,"maximum":2147483647},"operation_status":{"type":"string","enum":["pending","checkin_partial","checkin_complete"]}}}
+    TicketCheckinInput: {"type":"object","required":["code"],"properties":{"code":{"type":"string","pattern":"^[a-f0-9-]{36}\\.[1-9][0-9]{0,9}\\.[a-f0-9]{64}$"}}}
+    TicketCheckin: {"type":"object","required":["id","reservation_id","ticket_number","recorded_at","operation_status"],"properties":{"id":{"type":"string","format":"uuid"},"reservation_id":{"type":"string","format":"uuid"},"ticket_number":{"type":"integer","minimum":1,"maximum":2147483647},"recorded_at":{"type":"string","format":"date-time"},"operation_status":{"type":"string","enum":["pending","checkin_partial","checkin_complete"]}}}
+    Validators: {"type":"object","required":["items"],"properties":{"items":{"type":"array","items":{"type":"string","pattern":"^[1-9][0-9]*$"}}}}
+    ValidatorInput: {"type":"object","required":["user_id","enabled"],"properties":{"user_id":{"oneOf":[{"type":"integer","minimum":1},{"type":"string","pattern":"^[1-9][0-9]*$"}]},"enabled":{"type":"boolean"}}}
+    Validator: {"type":"object","required":["user_id","enabled"],"properties":{"user_id":{"type":"string","pattern":"^[1-9][0-9]*$"},"enabled":{"type":"boolean"}}}
+    Settlement: {"type":"object","required":["id","provider_id","agency_id","currency","total","status","payment_reference","created_at","approved_at","paid_at"],"properties":{"id":{"type":"string","format":"uuid"},"provider_id":{"type":"string","format":"uuid"},"agency_id":{"type":"string","format":"uuid"},"currency":{"type":"string","pattern":"^[A-Z]{3}$"},"total":{"type":"string","pattern":"^-?[0-9]+(?:\\.[0-9]+)?$"},"status":{"type":"string","enum":["reconciled","approved","paid"]},"payment_reference":{"type":"string","format":"uuid","nullable":true},"created_at":{"type":"string","format":"date-time"},"approved_at":{"type":"string","format":"date-time","nullable":true},"paid_at":{"type":"string","format":"date-time","nullable":true}}}
+    SettlementInput: {"type":"object","required":["agency_id","currency"],"properties":{"agency_id":{"type":"string","format":"uuid"},"currency":{"type":"string","pattern":"^[A-Z]{3}$"}}}
+    SettlementTransition: {"type":"object","required":["status"],"properties":{"status":{"type":"string","enum":["reconciled","approved","paid"]}}}
+    ReportAmount: {"type":"object","required":["currency","amount"],"properties":{"currency":{"type":"string","pattern":"^[A-Z]{3}$"},"amount":{"type":"string","pattern":"^-?[0-9]+(?:\\.[0-9]+)?$"}}}
+    OperationReport: {"type":"object","required":["from","to","time_zone","reservations","checkins","agency_sales_created","payments","refunds","commissions_receivable","commissions_payable","settlements_received","settlements_paid"],"properties":{"from":{"type":"string","format":"date-time"},"to":{"type":"string","format":"date-time"},"time_zone":{"type":"string"},"reservations":{"type":"object","required":["created","confirmed","cancelled","expired"],"properties":{"created":{"type":"integer","minimum":0},"confirmed":{"type":"integer","minimum":0},"cancelled":{"type":"integer","minimum":0},"expired":{"type":"integer","minimum":0}}},"checkins":{"type":"integer","minimum":0},"agency_sales_created":{"type":"integer","minimum":0},"payments":{"type":"array","items":{"$ref":"#/components/schemas/ReportAmount"}},"refunds":{"type":"array","items":{"$ref":"#/components/schemas/ReportAmount"}},"commissions_receivable":{"type":"array","items":{"$ref":"#/components/schemas/ReportAmount"}},"commissions_payable":{"type":"array","items":{"$ref":"#/components/schemas/ReportAmount"}},"settlements_received":{"type":"array","items":{"$ref":"#/components/schemas/ReportAmount"}},"settlements_paid":{"type":"array","items":{"$ref":"#/components/schemas/ReportAmount"}}}}
+    WebhookBody: {"type":"object","required":["id","type","reservation_id"],"properties":{"id":{"type":"string","format":"uuid"},"type":{"type":"string","enum":["voucher.issued"]},"reservation_id":{"type":"string","format":"uuid"}}}
+    WebhookSimulationInput: {"type":"object","required":["id","reservation_id"],"properties":{"id":{"type":"string","format":"uuid"},"reservation_id":{"type":"string","format":"uuid"}}}
+    WebhookReceipt: {"type":"object","required":["event_id","status","attempts","duplicate"],"properties":{"event_id":{"type":"string","format":"uuid"},"status":{"type":"string","enum":["pending","processed"]},"attempts":{"type":"integer","minimum":1},"duplicate":{"type":"boolean"}}}
+    Agreement: {"type":"object","required":["id","provider_id","agency_id","status","commission_percent"],"properties":{"id":{"type":"string","format":"uuid"},"provider_id":{"type":"string","format":"uuid"},"agency_id":{"type":"string","format":"uuid"},"status":{"type":"string","enum":["proposed","active","suspended","terminated"]},"commission_percent":{"type":"string","pattern":"^(?:0|[1-9][0-9]{0,2})(?:\\.[0-9]{1,4})?$"}}}
+    AgreementInput: {"type":"object","required":["agency_id","commission_percent"],"properties":{"agency_id":{"type":"string","format":"uuid"},"commission_percent":{"type":"string","pattern":"^(?:0|[1-9][0-9]{0,2})(?:\\.[0-9]{1,4})?$"}}}
+    AgreementTransition: {"type":"object","required":["status"],"properties":{"status":{"type":"string","enum":["proposed","active","suspended","terminated"]}}}
+    OfferInput: {"type":"object","required":["variant_id","rate_version_id"],"properties":{"variant_id":{"type":"string","format":"uuid"},"rate_version_id":{"type":"string","format":"uuid"}}}
+    OfferEnabled: {"type":"object","required":["enabled"],"properties":{"enabled":{"type":"boolean"}}}
+    DistributionOffer: {"type":"object","required":["id","provider_id","agreement_id","variant_id","rate_version_id","enabled"],"properties":{"id":{"type":"string","format":"uuid"},"provider_id":{"type":"string","format":"uuid"},"agreement_id":{"type":"string","format":"uuid"},"variant_id":{"type":"string","format":"uuid"},"rate_version_id":{"type":"string","format":"uuid"},"enabled":{"type":"boolean"}}}
+    VisibleDistributionOffer: {"type":"object","required":["id","provider_id","agreement_id","variant_id","rate_version_id","enabled","agency_id","product_name","variant_name","modality","amount","currency"],"properties":{"id":{"type":"string","format":"uuid"},"provider_id":{"type":"string","format":"uuid"},"agreement_id":{"type":"string","format":"uuid"},"variant_id":{"type":"string","format":"uuid"},"rate_version_id":{"type":"string","format":"uuid"},"enabled":{"type":"boolean"},"agency_id":{"type":"string","format":"uuid"},"product_name":{"type":"string"},"variant_name":{"type":"string"},"modality":{"type":"string","enum":["session","exclusive_resource"]},"amount":{"type":"string","pattern":"^-?[0-9]+(?:\\.[0-9]+)?$"},"currency":{"type":"string","pattern":"^[A-Z]{3}$"}}}
+    DistributionQuoteInput: {"type":"object","required":["selection"],"properties":{"selection":{"$ref":"#/components/schemas/Selection"}}}
+    AgencySale: {"type":"object","required":["id","provider_id","agency_id","offer_id","reservation_id","commission_percent","reservation_status","order"],"properties":{"id":{"type":"string","format":"uuid"},"provider_id":{"type":"string","format":"uuid"},"agency_id":{"type":"string","format":"uuid"},"offer_id":{"type":"string","format":"uuid"},"reservation_id":{"type":"string","format":"uuid"},"commission_percent":{"type":"string","pattern":"^(?:0|[1-9][0-9]{0,2})(?:\\.[0-9]{1,4})?$"},"reservation_status":{"type":"string","enum":["held","confirmed","cancelled","expired"]},"order":{"$ref":"#/components/schemas/AgencyOrderSummary"}}}
+    AgencyOrderSummary: {"type":"object","required":["total","paid","refunded","balance","currency","status","payment_status"],"properties":{"total":{"type":"string","pattern":"^-?[0-9]+(?:\\.[0-9]+)?$"},"paid":{"type":"string","pattern":"^-?[0-9]+(?:\\.[0-9]+)?$"},"refunded":{"type":"string","pattern":"^-?[0-9]+(?:\\.[0-9]+)?$"},"balance":{"type":"string","pattern":"^-?[0-9]+(?:\\.[0-9]+)?$"},"currency":{"type":"string","pattern":"^[A-Z]{3}$"},"status":{"type":"string","enum":["open","completed","expired","cancelled"]},"payment_status":{"type":"string","enum":["pending","partial","paid","refunded"]}}}
+    CommissionEntry: {"type":"object","required":["id","provider_id","agency_id","sale_id","type","amount","currency","recorded_at"],"properties":{"id":{"type":"string","format":"uuid"},"provider_id":{"type":"string","format":"uuid"},"agency_id":{"type":"string","format":"uuid"},"sale_id":{"type":"string","format":"uuid"},"type":{"type":"string","enum":["accrual","reversal"]},"amount":{"type":"string","pattern":"^-?[0-9]+(?:\\.[0-9]+)?$"},"currency":{"type":"string","pattern":"^[A-Z]{3}$"},"recorded_at":{"type":"string","format":"date-time"}}}
+    CommissionBalance: {"type":"object","required":["direction","amount","currency"],"properties":{"direction":{"type":"string","enum":["receivable","payable"]},"amount":{"type":"string","pattern":"^-?[0-9]+(?:\\.[0-9]+)?$"},"currency":{"type":"string","pattern":"^[A-Z]{3}$"}}}
+    SalesOrder: {"type":"object","required":["id","reservation_id","status","total","currency","allows_partial_payment","payment_status","paid","refunded","balance","voucher_available"],"properties":{"id":{"type":"string","format":"uuid"},"reservation_id":{"type":"string","format":"uuid"},"status":{"type":"string","enum":["open","completed","cancelled","expired"]},"total":{"type":"string","pattern":"^(?:0|[1-9][0-9]{0,27})(?:\\.[0-9]{1,13})?$"},"currency":{"type":"string","pattern":"^[A-Z]{3}$"},"allows_partial_payment":{"type":"boolean"},"payment_status":{"type":"string","enum":["pending","partial","paid","refunded"]},"paid":{"type":"string","pattern":"^(?:0|[1-9][0-9]{0,27})(?:\\.[0-9]{1,13})?$"},"refunded":{"type":"string","pattern":"^(?:0|[1-9][0-9]{0,27})(?:\\.[0-9]{1,13})?$"},"balance":{"type":"string","pattern":"^(?:0|[1-9][0-9]{0,27})(?:\\.[0-9]{1,13})?$"},"voucher_available":{"type":"boolean"}}}
+    SimulatedPaymentInput: {"type":"object","required":["amount"],"properties":{"amount":{"type":"string","pattern":"^(?:0|[1-9][0-9]{0,27})(?:\\.[0-9]{1,13})?$"}}}
+    SimulatedPaymentResult: {"type":"object","required":["payment_id","order"],"properties":{"payment_id":{"type":"string","format":"uuid"},"order":{"$ref":"#/components/schemas/SalesOrder"}}}
+    ReservationVoucher: {"type":"object","required":["id","reservation_id","organization","customer","start_at","end_at","time_zone","issued_at","order"],"properties":{"id":{"type":"string","format":"uuid"},"reservation_id":{"type":"string","format":"uuid"},"organization":{"type":"string"},"customer":{"type":"string"},"start_at":{"type":"string","format":"date-time"},"end_at":{"type":"string","format":"date-time"},"time_zone":{"type":"string"},"issued_at":{"type":"string","format":"date-time"},"order":{"$ref":"#/components/schemas/SalesOrder"}}}
     ReservationSettings: {"type":"object","required":["hold_minutes"],"properties":{"hold_minutes":{"type":"integer","minimum":1,"maximum":1440,"default":15}}}
-    Policy: {"type":"object","required":["id","product_id","version","terms"],"properties":{"id":{"type":"string","format":"uuid"},"product_id":{"type":"string","format":"uuid"},"version":{"type":"integer","minimum":1},"terms":{"type":"string","minLength":1,"maxLength":5000}}}
-    PolicyInput: {"type":"object","required":["terms"],"properties":{"terms":{"type":"string","minLength":1,"maxLength":5000}}}
+    Policy: {"type":"object","required":["id","product_id","version","terms","allows_partial_payment"],"properties":{"id":{"type":"string","format":"uuid"},"product_id":{"type":"string","format":"uuid"},"version":{"type":"integer","minimum":1},"terms":{"type":"string","minLength":1,"maxLength":5000},"allows_partial_payment":{"type":"boolean","default":false}}}
+    PolicyInput: {"type":"object","required":["terms"],"properties":{"terms":{"type":"string","minLength":1,"maxLength":5000},"allows_partial_payment":{"type":"boolean","default":false}}}
     Rate: {"type":"object","required":["id","variant_id","amount","currency","version"],"properties":{"id":{"type":"string","format":"uuid"},"variant_id":{"type":"string","format":"uuid"},"amount":{"type":"string","pattern":"^(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,12})?$","example":"250.00","description":"Importe exacto enviado como cadena decimal, con hasta 18 enteros y 12 decimales."},"currency":{"type":"string","pattern":"^[A-Z]{3}$","example":"MXN"},"version":{"type":"integer","minimum":1}}}
     RateInput: {"type":"object","required":["variant_id","amount","currency"],"properties":{"variant_id":{"type":"string","format":"uuid"},"amount":{"type":"string","pattern":"^(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,12})?$","example":"250.00","description":"Importe exacto enviado como cadena decimal, con hasta 18 enteros y 12 decimales."},"currency":{"type":"string","pattern":"^[A-Z]{3}$","example":"MXN"}}}
     Block: {"type":"object","required":["id","resource_id","start_at","end_at"],"properties":{"id":{"type":"string","format":"uuid"},"resource_id":{"type":"string","format":"uuid"},"start_at":{"type":"string","format":"date-time","description":"Instante UTC"},"end_at":{"type":"string","format":"date-time","description":"Instante UTC"}}}

@@ -16,7 +16,7 @@ class CustomerController
     {
         $access->authorize($request->user(), $org, 'customers.read');
 
-        return PaginatedJson::from($request, DB::table('customers')->where('organization_id', $org), ['id', 'name', 'email']);
+        return PaginatedJson::from($request, DB::table('customers')->where(['organization_id' => $org, 'is_agency_guest' => false]), ['id', 'name', 'email']);
     }
 
     public function store(Request $request, string $org, OrganizationAccess $access, AuditLog $audit): JsonResponse

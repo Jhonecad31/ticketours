@@ -43,13 +43,14 @@ class PricingController
         $this->access->authorize($request->user(), $org, 'pricing.read');
         $this->catalog->product($org, $id);
 
-        return PaginatedJson::from($request, DB::table('product_policy_versions')->where(['organization_id' => $org, 'product_id' => $id])->orderByDesc('version'), ['id', 'product_id', 'version', 'terms']);
+        return PaginatedJson::from($request, DB::table('product_policy_versions')->where(['organization_id' => $org, 'product_id' => $id])->orderByDesc('version'), ['id', 'product_id', 'version', 'terms', 'allows_partial_payment']);
     }
 
     public function createPolicy(Request $request, string $org, string $id): JsonResponse
     {
         $this->access->authorize($request->user(), $org, 'pricing.write');
-        $data = $request->validate(['terms' => ['required', 'string', 'max:5000']]);
+        $data = $request->validate(['terms' => ['required', 'string', 'max:5000'], 'allows_partial_payment' => ['sometimes', 'boolean']]);
+        $data['allows_partial_payment'] = (bool) ($data['allows_partial_payment'] ?? false);
         $key = ['product_id' => $id];
         $record = $this->version($request, $org, $id, 'product_policy_versions', $key, [...$key, ...$data], 'policy');
 

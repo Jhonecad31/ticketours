@@ -169,11 +169,12 @@ export default function CatalogPanel({ scope }: { scope: string }) {
             <Button type="submit" isDisabled={busy}>Crear variante</Button>
           </form>}
           <form className="grid content-start gap-3" onSubmit={form(async (data) => {
-            await api(`${scope}/products/${product.id}/policies`, Object.fromEntries(data));
+            await api(`${scope}/products/${product.id}/policies`, { terms: data.get("terms"), allows_partial_payment: data.has("allows_partial_payment") });
           }, "Versión de política guardada.")}>
             <Field label="Condiciones de la política">
               <textarea name="terms" className="min-h-24 rounded-lg border border-[#9aafac] p-2" required maxLength={5000} />
             </Field>
+            <label className="flex items-center gap-2 text-sm"><input name="allows_partial_payment" type="checkbox" /> Permitir confirmar con un abono de al menos 50 %</label>
             <Button type="submit" isDisabled={busy}>Guardar versión de política</Button>
           </form>
         </>}

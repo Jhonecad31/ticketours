@@ -75,3 +75,19 @@ Consulta las [reglas de catálogo e inventario](catalog-inventory.md).
 La cotización conserva la selección y referencias a las versiones de tarifa y política. Una retención referencia una cotización y una sesión o un recurso del mismo ámbito. La reserva referencia un cliente y una retención del mismo ámbito. Cada ítem conserva selección, importe, moneda y términos históricos. El historial registra cada transición con su correlación y actor, que puede ser el sistema.
 
 Las claves únicas impiden reutilizar una cotización para otra retención o una retención para otra reserva. PostgreSQL excluye los intervalos activos o comprometidos que se solapan en un recurso. Los resultados de mutaciones idempotentes se identifican por organización, actor, operación y clave. Consulta [reservas directas y vencimientos](reservations-phase-three.md).
+
+## Tablas implementadas en Fase 5
+
+`agreements` vincula las organizaciones proveedora y agencia. `distribution_offers` vincula el convenio con una variante y una versión de tarifa del proveedor. Una cotización distribuida conserva la referencia a la oferta.
+
+`agency_sales` relaciona la reserva operativa y la ficha privada de agencia mediante claves de ámbito separadas. Conserva el porcentaje pactado. `commission_entries` vincula cada devengo con su abono y cada reversión con su reembolso. Las claves únicas impiden repetir un tipo de movimiento para el mismo abono.
+
+Consulta [la distribución autorizada y su demostración](distribution-phase-five.md).
+
+## Tablas implementadas en Fase 6
+
+`ticket_batches` vincula los boletos a la reserva confirmada y conserva la cantidad y el secreto cifrado. `ticket_checkins` impide repetir el uso mediante una clave única por lote y número. `checkin_validators` vincula el permiso con una membresía de la organización.
+
+Los movimientos de comisión se vinculan a `settlements` mediante `settlement_items`. Las claves compuestas mantienen proveedor, agencia y moneda del corte. El pago simulado conserva su referencia. En `webhook_events`, la organización y el identificador de evento son únicos y la huella del contenido detecta reintentos incompatibles.
+
+Consulta las [reglas y la demostración de operación](operations-phase-six.md).

@@ -14,9 +14,13 @@ class AvailabilityController
 {
     public function __construct(private InventoryClaims $claims) {}
 
-    public function __invoke(Request $request, string $org, Catalog $catalog, OrganizationAccess $access): JsonResponse
+    public function __invoke(Request $request, string $org, Catalog $catalog, OrganizationAccess $access, ?array $distribution = null): JsonResponse
     {
-        $access->authorize($request->user(), $org, 'inventory.read');
+        if ($distribution === null) {
+            $access->authorize($request->user(), $org, 'inventory.read');
+        } else {
+            $request->query->set('variant_id', $distribution['variant_id']);
+        }
         $data = $request->validate(['variant_id' => ['required', 'uuid'], 'resource_id' => ['sometimes', 'uuid']]);
         $range = TimeRange::read($request, 'from', 'to');
         $variant = $catalog->variant($org, $data['variant_id']);
@@ -26,6 +30,10 @@ class AvailabilityController
 
         if ($resource !== null && $variant->modality === 'session') {
             throw ValidationException::withMessages(['resource_id' => 'El filtro se aplica a recursos exclusivos.']);
+        }
+
+        if ($distribution !== null && $resource !== null) {
+            abort_unless(DB::table('resource_windows')->where(['organization_id' => $org, 'variant_id' => $variant->id, 'resource_id' => $resource])->exists(), 404);
         }
 
         $range = new TimeRange(max($range->start, now()->utc()->toDateTimeString()), $range->end);

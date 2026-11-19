@@ -22,7 +22,11 @@ class OrganizationAccess
             ->pluck('role')
             ->map(Role::from(...));
 
-        abort_unless($roles->contains(fn (Role $role) => $role->allows($permission)), 403);
+        $allowed = $roles->contains(fn (Role $role) => $role->allows($permission));
+        if (! $allowed && $permission === 'operations.checkin') {
+            $allowed = DB::table('checkin_validators')->where(['organization_id' => $org, 'user_id' => $user->id])->exists();
+        }
+        abort_unless($allowed, 403);
 
         return $roles;
     }

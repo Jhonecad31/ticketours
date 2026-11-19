@@ -4,6 +4,8 @@ import { Button } from "@heroui/react";
 import { useRef, useState, type FormEvent, type ReactNode } from "react";
 import { api, ApiError, list, type Page } from "./api-client";
 
+import SalesPanel from "./sales-panel";
+
 export type Slot = {
   session_id?: string;
   resource_id?: string;
@@ -28,7 +30,8 @@ function dateValue(value: FormDataEntryValue | null) {
   return text.length === 16 ? `${text}:00Z` : `${text}Z`;
 }
 
-export default function ReservationPanel({ scope, variantId, slots }: { scope: string; variantId: string; slots: Slot[] }) {
+export default function ReservationPanel({ scope, variantId, slots, channel }: { scope: string; variantId: string; slots: Slot[]; channel?: string }) {
+  const checkout = channel ?? scope;
   const [slotIndex, setSlotIndex] = useState(0);
   const [quoted, setQuote] = useState<Quote | null>(null);
   const quote = quoted?.variant_id === variantId ? quoted : null;
@@ -67,7 +70,7 @@ export default function ReservationPanel({ scope, variantId, slots }: { scope: s
     const signature = JSON.stringify([path, body]);
     const key = keys.current.get(signature) ?? crypto.randomUUID();
     keys.current.set(signature, key);
-    return api<T>(scope + path, body, "POST", { "Idempotency-Key": key });
+    return api<T>(checkout + path, body, "POST", { "Idempotency-Key": key });
   }
 
   async function loadCustomers() {
@@ -78,14 +81,14 @@ export default function ReservationPanel({ scope, variantId, slots }: { scope: s
 
   return (
     <section className="grid content-start gap-4 rounded-xl border border-[#d4e0dd] p-4 lg:col-span-2">
-      <h3 className="text-lg font-semibold">Reserva directa</h3>
+      <h3 className="text-lg font-semibold">{channel ? "Reserva por agencia" : "Reserva directa"}</h3>
       {error && <p role="alert" className="text-red-800">{error}</p>}
       {slot && variantId && !hold && !reservation && <form className="grid gap-3" onSubmit={submit(async (data) => {
         const selection: Selection = slot.session_id
           ? { session_id: slot.session_id, quantity: Number(data.get("quantity")) }
           : { resource_id: slot.resource_id!, start_at: dateValue(data.get("from")), end_at: dateValue(data.get("to")) };
         setQuote(null);
-        setQuote(await api<Quote>(scope + "/quotes", { variant_id: variantId, selection }));
+        setQuote(await api<Quote>(checkout + "/quotes", { variant_id: variantId, selection }));
       })}>
         <Field label="Sesión o intervalo disponible"><select value={slotIndex} disabled={busy} onChange={(event) => {
           setSlotIndex(Number(event.target.value));
@@ -151,10 +154,12 @@ export default function ReservationPanel({ scope, variantId, slots }: { scope: s
       {reservation && <div className="grid gap-3">
         <p role="status">{states[reservation.status] ?? reservation.status} · {reservation.items[0]?.total} {reservation.items[0]?.currency}</p>
         <p className="break-all text-sm">Referencia {reservation.id}</p>
-        {reservation.status === "held" && <Button isDisabled={busy} onPress={() => void run(async () => {
+        {channel && <p className="text-sm">El proveedor registra el pago y confirma la reserva. Consulta su estado en ventas por agencia.</p>}
+        {!channel && <SalesPanel key={reservation.id} scope={scope} reference={reservation.id} status={reservation.status} />}
+        {!channel && reservation.status === "held" && <Button isDisabled={busy} onPress={() => void run(async () => {
           setReservation(await mutate<Reservation>(`/reservations/${reservation.id}/confirm`, {}));
         })}>Confirmar reserva</Button>}
-        {["held", "confirmed"].includes(reservation.status) && <form className="grid gap-3" onSubmit={(event) => {
+        {!channel && ["held", "confirmed"].includes(reservation.status) && <form className="grid gap-3" onSubmit={(event) => {
           event.preventDefault();
           const reason = new FormData(event.currentTarget).get("reason");
           void run(async () => {
@@ -165,7 +170,7 @@ export default function ReservationPanel({ scope, variantId, slots }: { scope: s
           <Button type="submit" variant="outline" isDisabled={busy}>Cancelar reserva</Button>
         </form>}
       </div>}
-      <form className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end" onSubmit={submit(async (data) => {
+      {!channel && <><form className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end" onSubmit={submit(async (data) => {
         setReservation(await api<Reservation>(`${scope}/reservations/${data.get("reference")}`));
       })}>
         <Field label="Referencia de reserva"><input name="reference" required defaultValue={reservation?.id} key={reservation?.id} /></Field>
@@ -183,7 +188,7 @@ export default function ReservationPanel({ scope, variantId, slots }: { scope: s
               <Field label="Vigencia (minutos)"><input name="minutes" type="number" min={1} max={1440} defaultValue={minutes} required /></Field>
               <Button type="submit" variant="outline" isDisabled={busy}>Guardar vigencia</Button>
             </form>}
-      </div>
+      </div></>}
     </section>
   );
 }

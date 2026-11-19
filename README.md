@@ -10,9 +10,13 @@ Plataforma SaaS híbrida multempresa para reservaciones genéricas. La organizac
 - [Modelo de datos](docs/data-model.md)
 - [Estados de reserva](docs/reservation-states.md)
 - [Reservas directas y vencimientos de Fase 3](docs/reservations-phase-three.md)
+- [Ventas, pagos simulados y vouchers de Fase 4](docs/sales-phase-four.md)
+- [Agencias, distribución y comisiones de Fase 5](docs/distribution-phase-five.md)
+- [Check-in, liquidaciones, reportes e integraciones de Fase 6](docs/operations-phase-six.md)
 - [Catálogo, tarifas y disponibilidad de Fase 2](docs/catalog-inventory.md)
 - [OpenAPI v1](docs/openapi/v1.yaml)
 - [Decisiones abiertas](docs/OPEN_QUESTIONS.md)
+- [Cierre técnico del MVP y restauración local](docs/mvp-technical-close.md)
 
 ## Arranque local
 

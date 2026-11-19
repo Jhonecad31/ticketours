@@ -5,6 +5,7 @@ namespace App\Modules\Reservations;
 use App\Modules\Audit\AuditLog;
 use App\Modules\Inventory\InventoryClaims;
 use App\Modules\Inventory\TimeRange;
+use App\Modules\Sales\Sales;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -14,7 +15,7 @@ use stdClass;
 
 class ReservationRecords
 {
-    public function __construct(private InventoryClaims $inventory, private AuditLog $audit) {}
+    public function __construct(private InventoryClaims $inventory, private AuditLog $audit, private Sales $sales) {}
 
     public function rows(string $table, string $org): Builder
     {
@@ -58,6 +59,7 @@ class ReservationRecords
         $this->audit->write($org, null, 'hold.expired', 'hold', $hold->id, $correlation);
         $reservation = $this->rows('reservations', $org)->where(['hold_id' => $hold->id, 'status' => 'held'])->first();
         if ($reservation !== null) {
+            $this->sales->close($org, $reservation->id, 'expired', null, $correlation);
             $this->transition($org, $reservation, 'expired', null, $correlation, 'hold_expired');
         }
     }

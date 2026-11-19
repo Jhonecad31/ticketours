@@ -37,3 +37,10 @@ button:focus-visible {
   outline: 2px solid #007d72;
   outline-offset: 2px;
 }
+
+@media print {
+  body:has(.ticketours-voucher) * { visibility: hidden; }
+  body .ticketours-voucher, body .ticketours-voucher * { visibility: visible; }
+  body .ticketours-voucher { position: absolute; inset: 0 auto auto 0; width: 100%; border: 0; }
+  body .ticketours-voucher .voucher-print-control { display: none; }
+}

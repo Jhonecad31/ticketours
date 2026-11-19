@@ -4,6 +4,8 @@ import { Button } from "@heroui/react";
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { api, ApiError, list, type Page } from "./api-client";
 import CatalogPanel from "./catalog-panel";
+import DistributionPanel from "./distribution-panel";
+import OperationsPanel from "./operations-panel";
 
 type User = { name: string; can_create_organizations: boolean };
 type Organization = { id: string; name: string; time_zone: string };
@@ -215,6 +217,8 @@ export default function Home() {
               )}
               {scope && <>
                 <div className="md:col-span-2"><CatalogPanel key={selected} scope={scope} /></div>
+                <div className="md:col-span-2"><DistributionPanel key={selected} scope={scope} organizationId={selected} /></div>
+                <div className="md:col-span-2"><OperationsPanel key={selected} scope={scope} organizationId={selected} /></div>
                 <Panel title="Membresías">
                   <Button variant="outline" isDisabled={busy} onPress={() => void run(async () => {
                     setMembers(await list<Membership>(`${scope}/memberships`));

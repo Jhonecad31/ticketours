@@ -10,6 +10,7 @@ use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
@@ -46,6 +47,9 @@ class PhaseThreeTest extends TestCase
         $this->actingAs($owner);
         $this->postJson("$scope/rates", ['variant_id' => $variant, 'amount' => '99.00', 'currency' => 'MXN'])->assertCreated();
         $this->postJson("$scope/products/$product/policies", ['terms' => 'Política nueva.'])->assertCreated();
+        $this->mutate("$route/payments", ['amount' => '0.12'], 'payment-one')->assertCreated();
+        $this->mutate("$route/confirm", [], 'confirm-incomplete')->assertConflict()->assertJsonPath('code', 'PAYMENT_REQUIRED');
+        $this->mutate("$route/payments", ['amount' => '0.12'], 'payment-two')->assertCreated();
         $result = $this->mutate("$route/confirm", [], 'confirm-one')->assertOk()->assertJsonPath('status', 'confirmed')
             ->assertJsonPath('items.0.total', '0.2400')->assertJsonPath('items.0.policy_version_id', $firstPolicy);
         $this->mutate("$route/confirm", [], 'confirm-one')->assertOk()->assertExactJson($result->json());
@@ -59,6 +63,15 @@ class PhaseThreeTest extends TestCase
         $this->assertDatabaseCount('reservation_history', 3);
         $this->assertDatabaseHas('reservation_history', ['reservation_id' => $reservation, 'status' => 'cancelled', 'reason' => 'Solicitud de prueba']);
         $this->assertDatabaseHas('audit_events', ['action' => 'reservation.cancelled', 'entity_id' => $reservation]);
+    }
+
+    public function test_scheduler_dispatches_expiration_to_the_queue(): void
+    {
+        Queue::fake([ExpireHolds::class]);
+
+        $this->artisan('schedule:run')->assertSuccessful();
+
+        Queue::assertPushed(ExpireHolds::class, 1);
     }
 
     public function test_expiration_is_idempotent_and_quote_and_hold_use_independent_timers(): void
@@ -77,6 +90,7 @@ class PhaseThreeTest extends TestCase
         $this->assertGreaterThan(strtotime($quote['expires_at']), strtotime($hold['expires_at']));
         $customer = $this->postJson("$scope/customers", ['name' => 'Persona'])->assertCreated()->json('id');
         $id = $this->mutate("$scope/reservations", ['hold_id' => $hold['id'], 'customer_id' => $customer], 'reserve')->assertCreated()->json('id');
+        $this->mutate("$scope/reservations/$id/payments", ['amount' => '0.01'], 'payment-expiring')->assertCreated();
         $this->travel(2)->minutes();
         $this->mutate("$scope/reservations/$id/confirm", [], 'expired-confirm')->assertConflict()->assertJsonPath('code', 'HOLD_EXPIRED');
         $this->getJson($this->availability($scope, $variant))->assertJsonPath('items.0.available_quantity', 2);
@@ -85,6 +99,8 @@ class PhaseThreeTest extends TestCase
         app()->call([new ExpireHolds, 'handle']);
         $this->getJson("$scope/reservations/$id")->assertOk()->assertJsonPath('status', 'expired');
         $this->assertDatabaseCount('reservation_history', 2);
+        $this->getJson("$scope/reservations/$id/order")->assertOk()->assertJsonPath('payment_status', 'refunded')->assertJsonPath('refunded', '0.01');
+        $this->assertDatabaseCount('refunds', 1);
         $this->assertDatabaseHas('audit_events', ['entity_id' => $hold['id'], 'action' => 'hold.expired', 'actor_id' => null]);
         $fresh = $this->quote($scope, $variant, $selection)->assertCreated()->json();
         $this->hold($scope, $fresh, 'fresh')->assertCreated();
@@ -136,6 +152,7 @@ class PhaseThreeTest extends TestCase
         $this->assertSame($start, strtotime($hold['expires_at']));
         $customer = $this->postJson("$scope/customers", ['name' => 'Persona'])->assertCreated()->json('id');
         $id = $this->mutate("$scope/reservations", ['hold_id' => $hold['id'], 'customer_id' => $customer], 'reserve')->assertCreated()->json('id');
+        $this->mutate("$scope/reservations/$id/payments", ['amount' => '0.12'], 'payment')->assertCreated();
         $this->mutate("$scope/reservations/$id/confirm", [], 'confirm')->assertOk();
 
         $other = $this->postJson('/api/v1/organizations', ['name' => 'Otra', 'time_zone' => 'America/Cancun'])->assertCreated()->json('id');
@@ -145,6 +162,36 @@ class PhaseThreeTest extends TestCase
         $this->mutate("$scope/reservations/$id/cancel", ['reason' => 'Fuera de plazo'], 'late-cancel')
             ->assertConflict()->assertJsonPath('code', 'CANCELLATION_CLOSED');
         $this->getJson("$scope/reservations/$id")->assertOk()->assertJsonPath('status', 'confirmed');
+    }
+
+    public function test_versioned_partial_payment_voucher_and_full_refund(): void
+    {
+        [$scope, , $product, $variant, $session] = $this->setupInventory();
+        $this->postJson("$scope/products/$product/policies", ['terms' => 'Admite parcial.', 'allows_partial_payment' => true])->assertCreated();
+        $quote = $this->quote($scope, $variant, ['session_id' => $session, 'quantity' => 2])->assertCreated()->json();
+        $this->postJson("$scope/products/$product/policies", ['terms' => 'Sólo completo.'])->assertCreated();
+        $hold = $this->hold($scope, $quote, 'hold-sale')->assertCreated()->json('id');
+        $customer = $this->postJson("$scope/customers", ['name' => 'Cliente'])->assertCreated()->json('id');
+        $id = $this->mutate("$scope/reservations", ['hold_id' => $hold, 'customer_id' => $customer], 'reservation-sale')->assertCreated()->json('id');
+        $route = "$scope/reservations/$id";
+        $this->getJson("$route/order")->assertOk()->assertJsonPath('allows_partial_payment', true)->assertJsonPath('payment_status', 'pending');
+        $this->getJson("$route/voucher")->assertNotFound();
+        $this->mutate("$route/payments", ['amount' => '0.11'], 'capture-one')->assertCreated()->assertJsonPath('order.payment_status', 'partial');
+        $this->mutate("$route/payments", ['amount' => '0.110'], 'capture-one')->assertCreated();
+        $this->mutate("$route/payments", ['amount' => '0.12'], 'capture-one')->assertConflict()->assertJsonPath('code', 'IDEMPOTENCY_KEY_REUSED');
+        $this->mutate("$route/confirm", [], 'confirm-sale')->assertConflict()->assertJsonPath('code', 'PAYMENT_REQUIRED');
+        $this->mutate("$route/payments", ['amount' => '0.01'], 'capture-two')->assertCreated();
+        $this->mutate("$route/confirm", [], 'confirm-sale')->assertOk()->assertJsonPath('status', 'confirmed');
+        $this->getJson("$route/voucher")->assertOk()->assertJsonPath('order.payment_status', 'partial')->assertJsonPath('order.balance', '0.1200');
+        $this->mutate("$route/payments", ['amount' => '0.13'], 'too-much')->assertConflict()->assertJsonPath('code', 'PAYMENT_AMOUNT_INVALID');
+        $this->mutate("$route/cancel", ['reason' => 'Prueba'], 'cancel-sale')->assertOk();
+        $this->mutate("$route/cancel", ['reason' => 'Prueba'], 'cancel-sale')->assertOk();
+        $this->getJson("$route/order")->assertOk()->assertJsonPath('payment_status', 'refunded')->assertJsonPath('refunded', '0.12');
+        $this->getJson("$route/voucher")->assertNotFound();
+        $this->assertDatabaseCount('payments', 2);
+        $this->assertDatabaseCount('refunds', 2);
+        $this->assertDatabaseCount('vouchers', 1);
+        $this->getJson($this->availability($scope, $variant))->assertJsonPath('items.0.available_quantity', 2);
     }
 
     private function setupInventory(): array

@@ -2,7 +2,11 @@
 
 namespace App\Modules\Reservations;
 
+use App\Modules\Audit\AuditLog;
+use App\Modules\Distribution\Distribution;
+use App\Modules\Operations\TicketIssuer;
 use App\Modules\Organizations\OrganizationAccess;
+use App\Modules\Sales\Sales;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -11,11 +15,13 @@ use Illuminate\Support\Str;
 
 class ReservationController
 {
-    public function __construct(private OrganizationAccess $access, private ReservationRecords $records, private Idempotency $idempotency) {}
+    public function __construct(private OrganizationAccess $access, private ReservationRecords $records, private Idempotency $idempotency, private Sales $sales, private Distribution $market, private AuditLog $audit, private TicketIssuer $tickets) {}
 
-    public function store(Request $request, string $org): JsonResponse
+    public function store(Request $request, string $org, ?array $distribution = null): JsonResponse
     {
-        $this->access->authorize($request->user(), $org, 'reservations.create');
+        if ($distribution === null) {
+            $this->access->authorize($request->user(), $org, 'reservations.create');
+        }
         $data = $request->validate([
             'hold_id' => ['required', 'uuid'], 'customer_id' => ['required', 'uuid'],
             'participants' => ['sometimes', 'array', 'list', 'max:100'],
@@ -24,15 +30,24 @@ class ReservationController
         $holdId = strtolower($data['hold_id']);
         $customerId = strtolower($data['customer_id']);
         $participants = $data['participants'] ?? [];
-        $body = $this->idempotency->run($request, $org, 'reservation.create', [$holdId, $customerId, $participants], function () use ($request, $org, $holdId, $customerId, $participants): array {
+        $body = $this->idempotency->run($request, $distribution['agency_id'] ?? $org, $distribution ? 'agency.reservation.create' : 'reservation.create', [$holdId, $customerId, $participants, ...($distribution ? [$distribution['id']] : [])], function () use ($request, $org, $holdId, $customerId, $participants, $distribution): array {
+            if ($distribution !== null) {
+                $this->market->lock($distribution);
+            }
             $hold = $this->records->lockHold($org, $holdId);
+            $quote = $this->records->get('quotes', $org, $hold->quote_id);
+            abort_unless($quote->distribution_offer_id === ($distribution['id'] ?? null), 404);
             $this->requireActive($hold);
-            $this->records->get('customers', $org, $customerId);
             abort_if($this->records->rows('reservations', $org)->where('hold_id', $holdId)->exists(), 409, 'INVALID_STATE_TRANSITION');
 
-            $quote = $this->records->get('quotes', $org, $hold->quote_id);
+            if ($distribution === null) {
+                abort_if($this->records->get('customers', $org, $customerId)->is_agency_guest, 404);
+                $operationalCustomer = $customerId;
+            } else {
+                $operationalCustomer = $this->market->operationalCustomer($distribution, $customerId);
+            }
             $policy = $this->records->get('product_policy_versions', $org, $quote->policy_version_id);
-            $reservation = ['id' => (string) Str::uuid(), 'hold_id' => $holdId, 'customer_id' => $customerId, 'status' => 'held'];
+            $reservation = ['id' => (string) Str::uuid(), 'hold_id' => $holdId, 'customer_id' => $operationalCustomer, 'status' => 'held'];
             DB::table('reservations')->insert(['organization_id' => $org, ...$reservation]);
             DB::table('reservation_items')->insert([
                 'id' => (string) Str::uuid(), 'organization_id' => $org, 'reservation_id' => $reservation['id'],
@@ -41,10 +56,19 @@ class ReservationController
                 'policy_version_id' => $quote->policy_version_id, 'policy_terms' => $policy->terms,
                 'participants' => json_encode($participants, JSON_THROW_ON_ERROR),
             ]);
+            $this->sales->open($org, $reservation['id'], $quote, (bool) $policy->allows_partial_payment, $request->user()->id, $request->attributes->get('correlation_id'));
+            if ($distribution !== null) {
+                $this->market->attribute($request, $distribution, $reservation['id'], $customerId, $this->audit);
+            }
             $record = (object) $reservation;
             $this->records->transition($org, $record, 'held', $request->user()->id, $request->attributes->get('correlation_id'));
 
-            return $this->records->reservationResponse($org, $record);
+            $response = $this->records->reservationResponse($org, $record);
+            if ($distribution !== null) {
+                $response['customer_id'] = $customerId;
+            }
+
+            return $response;
         });
 
         return response()->json($body, 201);
@@ -75,6 +99,7 @@ class ReservationController
             abort_if($record->status === 'expired', 409, 'HOLD_EXPIRED');
             abort_unless($record->status === 'held', 409, 'INVALID_STATE_TRANSITION');
             $this->requireActive($hold);
+            $this->sales->complete($org, $id, $request->user()->id, $request->attributes->get('correlation_id'));
             $this->records->setHoldStatus($org, $hold, 'committed');
             $this->records->transition($org, $record, 'confirmed', $request->user()->id, $request->attributes->get('correlation_id'));
 
@@ -96,6 +121,8 @@ class ReservationController
             if ($record->status === 'held') {
                 $this->requireActive($hold);
             }
+            $this->tickets->assertUnused($org, $id);
+            $this->sales->close($org, $id, 'cancelled', $request->user()->id, $request->attributes->get('correlation_id'));
             $this->records->setHoldStatus($org, $hold, 'released');
             $this->records->transition($org, $record, 'cancelled', $request->user()->id, $request->attributes->get('correlation_id'), $data['reason']);
 

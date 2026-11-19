@@ -25,7 +25,7 @@ El trabajo vence retenciones cada minuto. El perfil local usa la cola de base de
 
 1. Publica un producto con tarifa, política e inventario. En el panel de catálogo, elige una variante publicada y consulta un intervalo futuro.
 2. Cotiza una sesión o un intervalo libre. Retén el inventario, elige o crea un cliente y registra la reserva. Guarda la referencia.
-3. Como propietario o administrador, confirma y comprueba que la disponibilidad sigue descontando el inventario comprometido.
+3. Como propietario o administrador, registra el [pago simulado requerido](sales-phase-four.md), confirma y comprueba que la disponibilidad sigue descontando el inventario comprometido.
 4. Antes del inicio, cancela con motivo y comprueba que se restituye el cupo o intervalo. Consulta el estado por referencia y verifica la auditoría.
 
 [OpenAPI](openapi/v1.yaml) · [Estados de reserva](reservation-states.md)

@@ -16,11 +16,12 @@ enum Role: string
                 'catalog.read', 'catalog.write', 'catalog.publish',
                 'inventory.read', 'inventory.write', 'pricing.read', 'pricing.write',
                 'customers.read', 'customers.write', 'reservations.quote', 'reservations.hold', 'reservations.create',
-                'reservations.read', 'reservations.confirm', 'reservations.cancel', 'reservations.settings',
+                'reservations.read', 'reservations.confirm', 'reservations.cancel', 'reservations.settings', 'sales.read', 'sales.pay', 'distribution.manage', 'distribution.book',
+                'operations.manage', 'operations.checkin', 'settlements.read', 'settlements.manage', 'reports.read', 'integrations.simulate',
             ], true),
             self::BookingAgent => in_array($permission, [
                 'catalog.read', 'inventory.read', 'pricing.read', 'customers.read', 'customers.write',
-                'reservations.quote', 'reservations.hold', 'reservations.create', 'reservations.read',
+                'reservations.quote', 'reservations.hold', 'reservations.create', 'reservations.read', 'sales.read', 'distribution.book',
             ], true),
         };
     }

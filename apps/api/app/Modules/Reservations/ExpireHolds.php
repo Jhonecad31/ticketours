@@ -2,11 +2,14 @@
 
 namespace App\Modules\Reservations;
 
+use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Support\Facades\DB;
 
 class ExpireHolds implements ShouldQueue
 {
+    use Queueable;
+
     public function handle(ReservationRecords $records): void
     {
         DB::table('holds')->where('status', 'active')->where('expires_at', '<=', now()->utc()->toDateTimeString())

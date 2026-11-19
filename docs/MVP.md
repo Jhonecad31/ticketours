@@ -15,3 +15,5 @@ El modelo reserva puntos de extensión para capacidad diaria, cita variable, adm
 | 6 | Check-in, conciliación, reportes e integraciones. Depende de boletos y movimientos de venta | Validación de uso único, conciliación trazable y webhooks idempotentes |
 
 Cada fase cierra con demo, pruebas, documentación y aprobación. A1–A10 son la puerta de salida del MVP. A1, A2 y A9 se vuelven a verificar al incorporar recursos de negocio.
+
+Consulta la [revalidación A1–A10 y la evidencia de restauración](mvp-technical-close.md).
